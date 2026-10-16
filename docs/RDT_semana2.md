@@ -1,6 +1,6 @@
 # Registro de Decisões de Transformação (RDT) — parcial · Semana 2
 
-**Equipe:** Gustavo Curado Soares  ·  **Data:** 2026-10-16  ·  **Versão do pipeline:** `etl/01_extracao.py` + `etl/02_transformacao.py`
+**Equipe:** Gustavo Curado Soares, Marcelo Henrique  ·  **Data:** 2026-10-16  ·  **Versão do pipeline:** `etl/01_extracao.py` + `etl/02_transformacao.py`
 
 Este é o artefato central do projeto e vale **30% da nota**. Ele não descreve o
 que o código faz — o código já faz isso. Ele registra **por que** cada decisão

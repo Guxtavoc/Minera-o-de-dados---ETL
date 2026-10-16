@@ -1,0 +1,14 @@
+*
+!*/
+!.gitignore
+!.env.example
+!docker-compose.yml
+!README.md
+!etl/**
+!gerador/**
+!sql/**
+!docs/**
+dados/
+!saida/**
+__pycache__/
+*.pyc

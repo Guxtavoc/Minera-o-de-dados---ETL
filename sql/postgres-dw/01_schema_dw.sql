@@ -21,6 +21,7 @@ CREATE SCHEMA IF NOT EXISTS qa;   -- resultados das asserções de qualidade
 -- ===========================================================================
 DROP TABLE IF EXISTS dw.fato_item_pedido CASCADE;
 DROP TABLE IF EXISTS dw.fato_pedido      CASCADE;
+DROP TABLE IF EXISTS dw.mapa_cliente_origem CASCADE;
 DROP TABLE IF EXISTS dw.dim_cliente      CASCADE;
 DROP TABLE IF EXISTS dw.dim_produto      CASCADE;
 DROP TABLE IF EXISTS dw.dim_tempo        CASCADE;
@@ -44,6 +45,19 @@ CREATE TABLE dw.dim_cliente (
   CONSTRAINT ck_origem CHECK (origem_unificacao IN ('LEGADO','ECOM','AMBOS'))
 );
 CREATE INDEX ix_dim_cliente_cpf ON dw.dim_cliente (cpf_normalizado);
+CREATE INDEX ix_dim_cliente_id_legado ON dw.dim_cliente (id_legado);
+CREATE INDEX ix_dim_cliente_id_ecommerce ON dw.dim_cliente (id_ecommerce);
+
+-- Ponte de procedência: todo id original (inclusive os removidos na dedup)
+-- aponta para o id canônico que sobreviveu na dimensão. A etapa 3 usa este
+-- mapa para não perder pedidos que referenciavam uma linha duplicada.
+CREATE TABLE dw.mapa_cliente_origem (
+  sistema           TEXT   NOT NULL,
+  id_origem_natural BIGINT NOT NULL,
+  id_canonico       BIGINT NOT NULL,
+  regra             TEXT   NOT NULL,
+  PRIMARY KEY (sistema, id_origem_natural)
+);
 
 -- GRÃO: um produto conformado.
 CREATE TABLE dw.dim_produto (
@@ -59,6 +73,9 @@ CREATE TABLE dw.dim_produto (
   id_ecommerce     BIGINT      NULL,
   origem           TEXT        NOT NULL
 );
+CREATE INDEX ix_dim_produto_sku ON dw.dim_produto (sku);
+CREATE INDEX ix_dim_produto_id_legado ON dw.dim_produto (id_legado);
+CREATE INDEX ix_dim_produto_id_ecommerce ON dw.dim_produto (id_ecommerce);
 
 CREATE TABLE dw.dim_tempo (
   data_sk        DATE PRIMARY KEY,
@@ -109,8 +126,9 @@ CREATE TABLE dw.fato_pedido (
 );
 CREATE INDEX ix_fato_pedido_cli  ON dw.fato_pedido (cliente_sk);
 CREATE INDEX ix_fato_pedido_data ON dw.fato_pedido (data_pedido_sk);
+CREATE INDEX ix_fato_pedido_cli_data ON dw.fato_pedido (cliente_sk, data_pedido_sk);
 
--- GRÃO: UM ITEM DE UM PEDIDO.
+-- GRÃO: UMA LINHA DE ITEM DE UM PEDIDO.
 CREATE TABLE dw.fato_item_pedido (
   item_sk     BIGSERIAL PRIMARY KEY,
   pedido_sk   BIGINT NOT NULL REFERENCES dw.fato_pedido (pedido_sk),
@@ -120,6 +138,8 @@ CREATE TABLE dw.fato_item_pedido (
   valor_desconto NUMERIC(12,2) NOT NULL,
   valor_linha    NUMERIC(12,2) NOT NULL
 );
+CREATE INDEX ix_fato_item_pedido_pedido  ON dw.fato_item_pedido (pedido_sk);
+CREATE INDEX ix_fato_item_pedido_produto ON dw.fato_item_pedido (produto_sk);
 
 -- Ponte para o atendimento e a avaliação: grão de UM atendimento / UMA avaliação.
 CREATE TABLE IF NOT EXISTS dw.fato_atendimento (
@@ -146,6 +166,12 @@ CREATE TABLE IF NOT EXISTS dw.fato_avaliacao (
   votos_uteis  INT    NULL
 );
 
+CREATE INDEX IF NOT EXISTS ix_fato_atendimento_cli  ON dw.fato_atendimento (cliente_sk);
+CREATE INDEX IF NOT EXISTS ix_fato_atendimento_ped  ON dw.fato_atendimento (pedido_sk);
+CREATE INDEX IF NOT EXISTS ix_fato_avaliacao_ped    ON dw.fato_avaliacao (pedido_sk);
+CREATE INDEX IF NOT EXISTS ix_fato_avaliacao_prod   ON dw.fato_avaliacao (produto_sk);
+CREATE INDEX IF NOT EXISTS ix_fato_avaliacao_data   ON dw.fato_avaliacao (data_sk);
+
 -- ===========================================================================
 -- CAMADA abt — tabela-base de análise
 --
@@ -161,16 +187,21 @@ CREATE TABLE IF NOT EXISTS dw.fato_avaliacao (
 -- ===========================================================================
 DROP TABLE IF EXISTS abt.recompra_90d CASCADE;
 CREATE TABLE abt.recompra_90d (
-  cliente_sk          BIGINT  NOT NULL REFERENCES dw.dim_cliente (cliente_sk),
-  data_corte          DATE    NOT NULL,
-  alvo_recompra_90d   SMALLINT NOT NULL CHECK (alvo_recompra_90d IN (0,1)),
-  -- ------------------------------------------------------------------
-  -- A PARTIR DAQUI: atributos preditivos desenhados por vocês.
-  -- Exemplos do que é legítimo (calculado somente até data_corte):
-  --   recencia_dias, frequencia_pedidos, valor_monetario_total,
-  --   ticket_medio, prazo_medio_entrega, qtd_atendimentos_sac,
-  --   nota_media_avaliacoes, categorias_distintas, canal_predominante
-  -- ------------------------------------------------------------------
+  cliente_sk            BIGINT  NOT NULL REFERENCES dw.dim_cliente (cliente_sk),
+  data_corte            DATE    NOT NULL,
+  alvo_recompra_90d     SMALLINT NOT NULL CHECK (alvo_recompra_90d IN (0,1)),
+  recencia_dias          DOUBLE PRECISION,
+  frequencia_pedidos     BIGINT,
+  valor_monetario        DOUBLE PRECISION,
+  ticket_medio           DOUBLE PRECISION,
+  prazo_medio_entrega    DOUBLE PRECISION,
+  taxa_cancelamento      DOUBLE PRECISION,
+  categorias_distintas   BIGINT,
+  canal_predominante     TEXT,
+  qtd_atendimentos_sac   BIGINT,
+  nota_media_avaliacoes  DOUBLE PRECISION,
+  tempo_como_cliente     BIGINT,
+  qtd_itens              BIGINT,
   PRIMARY KEY (cliente_sk, data_corte)
 );
 
@@ -186,4 +217,20 @@ CREATE TABLE IF NOT EXISTS qa.execucao_assercao (
   valor_obtido NUMERIC NULL,
   valor_esperado TEXT NULL,
   aprovado     BOOLEAN NOT NULL
+);
+
+-- Itens sem pedido não entram no esquema estrela, mas não são apagados:
+-- ficam aqui com a chave natural e o valor, para recuperação/auditoria.
+CREATE TABLE IF NOT EXISTS qa.quarentena_item_pedido (
+  id                  BIGSERIAL PRIMARY KEY,
+  id_origem           TEXT   NOT NULL,   -- 'LEG-...' | 'ECOM-...'
+  sistema_origem      TEXT   NOT NULL,
+  id_produto_legado   BIGINT NULL,
+  id_produto_ecommerce BIGINT NULL,
+  quantidade          INT    NULL,
+  valor_unitario      NUMERIC(12,2) NULL,
+  valor_desconto      NUMERIC(12,2) NULL,
+  valor_linha         NUMERIC(12,2) NULL,
+  motivo              TEXT   NOT NULL,
+  detectado_em        TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -76,9 +76,21 @@ def cpf_normalizado(serie):
 
 
 def para_sp(serie):
-    """Converte TIMESTAMPTZ (UTC) para o horário local de São Paulo, sem fuso."""
-    s = pd.to_datetime(serie, errors="coerce", utc=True)
-    return s.dt.tz_convert(FUSO_SP).dt.tz_localize(None)
+    """Converte timestamps para o horário local de São Paulo, sem fuso.
+
+    Aceita a mistura da origem: timestamps com offset explícito são convertidos
+    para UTC-3; timestamps sem offset são interpretados como hora local de São
+    Paulo (a origem não os marca como UTC). O ``utc=True`` direto transformava
+    os sem offset em NaT quando a série era mista.
+    """
+    def _um(v):
+        ts = pd.to_datetime(v, errors="coerce")
+        if pd.isna(ts):
+            return pd.NaT
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(FUSO_SP)
+        return ts.tz_convert(FUSO_SP).tz_localize(None)
+    return serie.map(_um)
 
 
 def ler(tabela, dw):
@@ -97,6 +109,93 @@ def grava_conformado(df, tabela, dw):
     """Recria uma tabela de fatos conformados (chaves naturais)."""
     df.to_sql(tabela, dw, schema="dw", if_exists="replace",
               index=False, method="multi", chunksize=5_000)
+
+
+def grava_mapa_clientes(dw, mapa):
+    """Persiste o mapa id_original -> id_canonico usado pela etapa 3."""
+    with dw.begin() as cx:
+        cx.execute(text("""
+            CREATE TABLE IF NOT EXISTS dw.mapa_cliente_origem (
+              sistema           TEXT   NOT NULL,
+              id_origem_natural BIGINT NOT NULL,
+              id_canonico       BIGINT NOT NULL,
+              regra             TEXT   NOT NULL,
+              PRIMARY KEY (sistema, id_origem_natural)
+            )
+        """))
+        cx.execute(text("TRUNCATE dw.mapa_cliente_origem"))
+    mapa.to_sql("mapa_cliente_origem", dw, schema="dw", if_exists="append",
+                index=False, method="multi", chunksize=5_000)
+
+
+def _deduplica_com_mapa(df, id_col, sistema):
+    """
+    Deduplica em duas passagens e devolve o mapa completo
+    id_original -> id_canonico. O mapa é o que permite à etapa 3 ligar
+    pedidos que apontavam para uma linha removida da dimensão.
+
+    Passagem 1: CPF (válido ou não) — canônico é o menor id do grupo.
+    Passagem 2: sem CPF que casa nome+cidade+UF com uma linha canônica com CPF.
+    Passagem 3: sem CPF que colide entre si por nome+cidade+UF.
+    """
+    df = df.sort_values(id_col).copy()
+    ids = [int(x) for x in df[id_col]]
+    mapa = {i: i for i in ids}
+    regra = {i: "MANTIDO" for i in ids}
+
+    com_cpf = df[df["cpf_normalizado"].notna()].copy()
+    canon_cpf = com_cpf.groupby("cpf_normalizado")[id_col].min().to_dict()
+    canon_serie = com_cpf["cpf_normalizado"].map(canon_cpf).astype("int64")
+    for id_, canon in zip(com_cpf[id_col], canon_serie):
+        id_, canon = int(id_), int(canon)
+        mapa[id_] = canon
+        if id_ != canon:
+            regra[id_] = "DUPLICATA_CPF"
+
+    canon_ids = {int(x) for x in canon_cpf.values()}
+    canon_com_cpf = df[df[id_col].isin(canon_ids) & df["cpf_normalizado"].notna()]
+    nc_para_cpf = canon_com_cpf.groupby("_nc")[id_col].min().to_dict()
+
+    sem_cpf = df[df["cpf_normalizado"].isna()].copy()
+    nc_para_sem = sem_cpf.groupby("_nc")[id_col].min().to_dict()
+    for id_, nc in zip(sem_cpf[id_col], sem_cpf["_nc"]):
+        id_ = int(id_)
+        if nc in nc_para_cpf:
+            canon = int(nc_para_cpf[nc])
+            regra[id_] = "GEMEA_SEM_CPF"
+        else:
+            canon = int(nc_para_sem[nc])
+            if id_ != canon:
+                regra[id_] = "DUPLICATA_NOME_CIDADE_UF"
+        mapa[id_] = canon
+
+    df_canon = df[df[id_col].isin(set(mapa.values()))].copy()
+    df_canon = df_canon.sort_values(id_col).reset_index(drop=True)
+
+    mapa_df = pd.DataFrame({
+        "sistema": sistema,
+        "id_origem_natural": list(mapa.keys()),
+        "id_canonico": list(mapa.values()),
+        "regra": [regra[k] for k in mapa.keys()],
+    })
+    mapa_df["id_origem_natural"] = mapa_df["id_origem_natural"].astype("int64")
+    mapa_df["id_canonico"] = mapa_df["id_canonico"].astype("int64")
+
+    com_cpf_ids = {int(x) for x in com_cpf[id_col]}
+    sem_cpf_ids = {int(x) for x in sem_cpf[id_col]}
+    sem_com_nc_cpf = {int(i) for i, nc in zip(sem_cpf[id_col], sem_cpf["_nc"])
+                      if nc in nc_para_cpf}
+    metricas = {
+        "linhas_origem": int(len(df)),
+        "duplicatas_removidas_total": int(len(df) - len(df_canon)),
+        "removidas_por_cpf": sum(1 for i in com_cpf_ids if mapa[i] != i),
+        "removidas_sem_cpf_gemeas": len(sem_com_nc_cpf),
+        "removidas_sem_cpf_nome_cidade_uf": sum(
+            1 for i in sem_cpf_ids - sem_com_nc_cpf if mapa[i] != i),
+        "linhas_apos_dedup": int(len(df_canon)),
+        "remapeados": sum(1 for i in ids if mapa[i] != i),
+    }
+    return df_canon, mapa_df, metricas
 
 
 # ===========================================================================
@@ -140,28 +239,18 @@ def unifica_clientes(qa):
 
     # ---- deduplicação interna do legado (RDT-03) ---------------------------
     antes = len(leg)
-    n_com_cpf_antes = int(leg["cpf_normalizado"].notna().sum())
     leg["_nc"] = (leg["nome_padronizado"] + "|" + leg["cidade"].fillna("")
                   + "|" + leg["uf"].fillna(""))
-    leg = leg.sort_values("id_legado")
-    # passagem 1: por CPF (colapsa duplicatas exatas e near-duplicates com máscara)
-    com_cpf = leg[leg["cpf_normalizado"].notna()].drop_duplicates("cpf_normalizado", keep="first")
-    sem_cpf = leg[leg["cpf_normalizado"].isna()]
-    # passagem 2: linha sem CPF que casa nome+cidade+UF com uma linha com CPF
-    # é a gêmea com CPF esvaziado -> descartada. As sem CPF restantes colapsam
-    # entre si por nome+cidade+UF.
-    chaves_com_cpf = set(com_cpf["_nc"])
-    gemeas = sem_cpf["_nc"].isin(chaves_com_cpf)
-    sem_cpf = sem_cpf[~gemeas].drop_duplicates("_nc", keep="first")
-    leg = (pd.concat([com_cpf, sem_cpf])
-             .sort_values("id_legado").reset_index(drop=True))
-    removidas = antes - len(leg)
+    leg, mapa_leg, met_leg = _deduplica_com_mapa(leg, "id_legado", "LEGADO")
     METRICAS["RDT03"] = {
         "clientes_legado_brutos": int(antes),
-        "duplicatas_removidas_total": int(removidas),
-        "removidas_por_cpf": int(n_com_cpf_antes - len(com_cpf)),
-        "removidas_sem_cpf_gemeas": int(gemeas.sum()),
-        "clientes_legado_apos_dedup": int(len(leg)),
+        "clientes_legado_apos_dedup": int(met_leg["linhas_apos_dedup"]),
+        "duplicatas_removidas_total": int(met_leg["duplicatas_removidas_total"]),
+        "removidas_por_cpf": int(met_leg["removidas_por_cpf"]),
+        "removidas_sem_cpf_gemeas": int(met_leg["removidas_sem_cpf_gemeas"]),
+        "removidas_sem_cpf_nome_cidade_uf": int(
+            met_leg["removidas_sem_cpf_nome_cidade_uf"]),
+        "remapeados": int(met_leg["remapeados"]),
     }
 
     # ---- prepara o e-commerce ----------------------------------------------
@@ -180,13 +269,9 @@ def unifica_clientes(qa):
     eco_antes = len(eco)
     eco["_nc"] = (eco["nome_padronizado"] + "|" + eco["cidade"].fillna("")
                   + "|" + eco["uf"].fillna(""))
-    eco = eco.sort_values("id_ecommerce")
-    eco_cpf = eco[eco["cpf_normalizado"].notna()].drop_duplicates("cpf_normalizado", keep="first")
-    eco_sem = eco[eco["cpf_normalizado"].isna()]
-    eco_sem = eco_sem[~eco_sem["_nc"].isin(set(eco_cpf["_nc"]))]
-    eco_sem = eco_sem.drop_duplicates("_nc", keep="first")
-    eco = pd.concat([eco_cpf, eco_sem]).sort_values("id_ecommerce").reset_index(drop=True)
-    METRICAS["RDT02_ecom_dedup"] = int(eco_antes - len(eco))
+    eco, mapa_eco, met_eco = _deduplica_com_mapa(eco, "id_ecommerce", "ECOM")
+    METRICAS["RDT02_ecom_dedup"] = int(met_eco["duplicatas_removidas_total"])
+    METRICAS["RDT03_ecom"] = met_eco
 
     # ---- pareamento por CPF (a ponte principal) ----------------------------
     a = leg[leg["cpf_normalizado"].notna()]
@@ -218,9 +303,17 @@ def unifica_clientes(qa):
                     + "|" + leg_r["uf"].fillna(""))
     eco_r["_nc"] = (eco_r["nome_padronizado"] + "|" + eco_r["cidade"].fillna("")
                     + "|" + eco_r["uf"].fillna(""))
-    par_nc = leg_r.merge(eco_r, on="_nc", how="inner", suffixes=("_l", "_e"))
+    par_nc_bruto = leg_r.merge(eco_r, on="_nc", how="inner", suffixes=("_l", "_e"))
     # colisão: uma chave nome+cidade+UF que casa mais de uma pessoa distinta
-    nc_colididos = int(par_nc.groupby("_nc")["id_legado"].nunique().gt(1).sum())
+    nc_colididos = int(par_nc_bruto.groupby("_nc")["id_legado"].nunique().gt(1).sum())
+    # RDT-02: fallback só vale 1:1. Chaves com mais de um cliente de um dos
+    # lados não são pareadas; esses clientes seguem como linhas de origem única.
+    unicos_l = par_nc_bruto.groupby("_nc")["id_legado"].nunique().eq(1)
+    unicos_e = par_nc_bruto.groupby("_nc")["id_ecommerce"].nunique().eq(1)
+    chaves_1x1 = unicos_l[unicos_l & unicos_e].index
+    pares_descartados = int(len(par_nc_bruto)
+                           - int(par_nc_bruto["_nc"].isin(chaves_1x1).sum()))
+    par_nc = par_nc_bruto[par_nc_bruto["_nc"].isin(chaves_1x1)]
     id_leg_nc = set(par_nc["id_legado"])
     id_eco_nc = set(par_nc["id_ecommerce"])
     for _, r in par_nc.iterrows():
@@ -260,6 +353,9 @@ def unifica_clientes(qa):
                "uf", "dt_primeiro_cadastro", "id_legado", "id_ecommerce",
                "origem_unificacao", "regra_pareamento"])
 
+    mapa = pd.concat([mapa_leg, mapa_eco], ignore_index=True)
+    grava_mapa_clientes(dw, mapa)
+
     # ---- métricas do RDT-02 ------------------------------------------------
     METRICAS["RDT02"] = {
         "dim_cliente_linhas": int(len(dim)),
@@ -268,11 +364,17 @@ def unifica_clientes(qa):
         "origem_ECOM": int((dim["origem_unificacao"] == "ECOM").sum()),
         "pareados_por_CPF": int((dim["regra_pareamento"] == "CPF").sum()),
         "pareados_por_NOME_CIDADE_UF": int((dim["regra_pareamento"] == "NOME_CIDADE_UF").sum()),
+        "pares_1x1_descartados": int(pares_descartados),
         "cpf_valido": int((dim["cpf_valido"] == True).sum()),          # noqa: E712
         "cpf_invalido": int((dim["cpf_valido"] == False).sum()),       # noqa: E712
         "cpf_ausente": int(dim["cpf_normalizado"].isna().sum()),
         "falsos_possiveis_colisao_CPF": cpfs_colididos,
         "falsos_possiveis_colisao_NOME_CIDADE_UF": nc_colididos,
+        "mapa_legado_linhas": int(len(mapa_leg)),
+        "mapa_ecom_linhas": int(len(mapa_eco)),
+        "mapa_total_linhas": int(len(mapa)),
+        "remapeados_legado": int(met_leg["remapeados"]),
+        "remapeados_ecom": int(met_eco["remapeados"]),
     }
 
     # ---- asserções (2.7) ---------------------------------------------------
@@ -281,6 +383,29 @@ def unifica_clientes(qa):
              "dois clientes validos nao podem compartilhar o mesmo CPF")
     qa.dominio("dim_cliente: origem_unificacao", dim["origem_unificacao"],
                {"LEGADO", "ECOM", "AMBOS"})
+    qa.igual("dim_cliente: id_legado duplicado",
+             int(dim["id_legado"].dropna().duplicated().sum()), 0,
+             "cada id do legado deve aparecer em no maximo uma identidade")
+    qa.igual("dim_cliente: id_ecommerce duplicado",
+             int(dim["id_ecommerce"].dropna().duplicated().sum()), 0,
+             "cada id do ecommerce deve aparecer em no maximo uma identidade")
+    qa.igual("mapa_cliente_origem: chave duplicada",
+             int(mapa.duplicated(["sistema", "id_origem_natural"]).sum()), 0,
+             "o mapa deve ter uma linha por cliente original")
+    qa.igual("mapa_cliente_origem: linhas", len(mapa), antes + eco_antes,
+             "todo cliente bruto das duas origens deve estar no mapa")
+    ids_leg = {int(x) for x in dim["id_legado"].dropna()}
+    ids_eco = {int(x) for x in dim["id_ecommerce"].dropna()}
+    canon_leg = {int(x) for x in mapa.loc[mapa["sistema"] == "LEGADO",
+                                           "id_canonico"]}
+    canon_eco = {int(x) for x in mapa.loc[mapa["sistema"] == "ECOM",
+                                          "id_canonico"]}
+    qa.igual("mapa LEGADO: canonico ausente na dim",
+             len(canon_leg - ids_leg), 0,
+             "todo id canonico do legado deve existir na dimensao")
+    qa.igual("mapa ECOM: canonico ausente na dim",
+             len(canon_eco - ids_eco), 0,
+             "todo id canonico do ecommerce deve existir na dimensao")
     qa.cardinalidade_preservada(
         "dim_cliente <= legado + ecommerce (pos dedup)",
         METRICAS["RDT03"]["clientes_legado_apos_dedup"] + len(eco), len(dim),
@@ -699,6 +824,12 @@ def liga_sac_e_avaliacoes(qa, pedidos):
         "nota_satisfacao": nota,
         "horas_resolucao": horas.round(2),
     })
+    # O CSV do SAC repete protocolos idênticos (mesmo atendimento exportado
+    # duas vezes). O grão do fato é um atendimento, então o protocolo é a
+    # chave de deduplicação; as linhas removidas são contadas no RDT-13.
+    sac_antes = len(atend)
+    atend = atend.drop_duplicates(subset=["protocolo"], keep="first").reset_index(drop=True)
+    sac_duplicatas = sac_antes - len(atend)
     atend["pedido_ligado"] = atend["id_origem_pedido"].isin(chaves_pedido)
 
     # ---- avaliações ---------------------------------------------------------
@@ -716,13 +847,22 @@ def liga_sac_e_avaliacoes(qa, pedidos):
     av["pedido_ligado"] = av["id_origem_pedido"].isin(chaves_pedido)
 
     METRICAS["RDT13"] = {
+        "sac_linhas_origem": int(sac_antes),
+        "sac_duplicatas_removidas": int(sac_duplicatas),
         "sac_total": int(len(atend)),
         "sac_ligados": int(atend["pedido_ligado"].sum()),
         "sac_sem_pedido": int((~atend["pedido_ligado"]).sum()),
         "avaliacoes_total": int(len(av)),
         "avaliacoes_ligadas": int(av["pedido_ligado"].sum()),
         "avaliacoes_sem_pedido": int((~av["pedido_ligado"]).sum()),
+        "avaliacoes_data_nula": int(av["data"].isna().sum()),
     }
+    qa.igual("SAC: protocolo duplicado", int(atend["protocolo"].duplicated().sum()), 0,
+             "um protocolo deve representar um unico atendimento")
+    qa.igual("avaliacoes: data nula", int(av["data"].isna().sum()), 0,
+             "todo submitted_at deve ser interpretado como data local")
+    qa.igual("avaliacoes: sem pedido", int((~av["pedido_ligado"]).sum()), 0,
+             "toda avaliacao deve ligar a um pedido pela chave natural")
     return atend, av
 
 

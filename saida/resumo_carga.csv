@@ -1,0 +1,14 @@
+tabela,linhas,soma
+dim_status,9,
+dim_canal,6,
+dim_tempo,1217,
+dim_produto,15000,
+qa.quarentena_item_pedido,20577,2791092.3
+fato_atendimento,95000,
+mapa_cliente_origem,132250,
+dim_cliente,114548,
+abt.recompra_90d,107091,
+abt.recompra_90d_vazamento,107091,
+fato_avaliacao,160000,
+fato_pedido,410000,1027032512.48
+fato_item_pedido,1371876,1010183124.51

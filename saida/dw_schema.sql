@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict RrFiaxp8896Cd6aD8yWxoC5A6kd4AZvURyboLyc2J41MbIGgMuoQ5DCLl4cSm0D
+\restrict odQFEJfiUs4YJxXhyJXlnY9LEaHh3nKQ39eKSlZcLMUUg8gMb3pu5E2Cjn6EtWn
 
 -- Dumped from database version 16.15 (Debian 16.15-1.pgdg13+2)
--- Dumped by pg_dump version 16.15 (Debian 16.15-1.pgdg13+2)
+-- Dumped by pg_dump version 17.11 (Debian 17.11-0+deb13u1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -18,6 +18,97 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_status_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_data_pedido_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_data_entrega_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_cliente_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_canal_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_item_pedido DROP CONSTRAINT IF EXISTS fato_item_pedido_produto_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_item_pedido DROP CONSTRAINT IF EXISTS fato_item_pedido_pedido_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_avaliacao DROP CONSTRAINT IF EXISTS fato_avaliacao_produto_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_avaliacao DROP CONSTRAINT IF EXISTS fato_avaliacao_pedido_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_avaliacao DROP CONSTRAINT IF EXISTS fato_avaliacao_data_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_atendimento DROP CONSTRAINT IF EXISTS fato_atendimento_pedido_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_atendimento DROP CONSTRAINT IF EXISTS fato_atendimento_data_fechamento_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_atendimento DROP CONSTRAINT IF EXISTS fato_atendimento_data_abertura_sk_fkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_atendimento DROP CONSTRAINT IF EXISTS fato_atendimento_cliente_sk_fkey;
+ALTER TABLE IF EXISTS ONLY abt.recompra_90d_vazamento DROP CONSTRAINT IF EXISTS fk_recompra_90d_vazamento_cliente;
+ALTER TABLE IF EXISTS ONLY abt.recompra_90d DROP CONSTRAINT IF EXISTS fk_recompra_90d_cliente;
+DROP INDEX IF EXISTS dw.ix_fato_pedido_data;
+DROP INDEX IF EXISTS dw.ix_fato_pedido_cli_data;
+DROP INDEX IF EXISTS dw.ix_fato_pedido_cli;
+DROP INDEX IF EXISTS dw.ix_fato_item_pedido_produto;
+DROP INDEX IF EXISTS dw.ix_fato_item_pedido_pedido;
+DROP INDEX IF EXISTS dw.ix_fato_avaliacao_prod;
+DROP INDEX IF EXISTS dw.ix_fato_avaliacao_ped;
+DROP INDEX IF EXISTS dw.ix_fato_avaliacao_data;
+DROP INDEX IF EXISTS dw.ix_fato_atendimento_ped;
+DROP INDEX IF EXISTS dw.ix_fato_atendimento_cli;
+DROP INDEX IF EXISTS dw.ix_dim_produto_sku;
+DROP INDEX IF EXISTS dw.ix_dim_produto_id_legado;
+DROP INDEX IF EXISTS dw.ix_dim_produto_id_ecommerce;
+DROP INDEX IF EXISTS dw.ix_dim_cliente_id_legado;
+DROP INDEX IF EXISTS dw.ix_dim_cliente_id_ecommerce;
+DROP INDEX IF EXISTS dw.ix_dim_cliente_cpf;
+ALTER TABLE IF EXISTS ONLY qa.quarentena_item_pedido DROP CONSTRAINT IF EXISTS quarentena_item_pedido_pkey;
+ALTER TABLE IF EXISTS ONLY qa.execucao_assercao DROP CONSTRAINT IF EXISTS execucao_assercao_pkey;
+ALTER TABLE IF EXISTS ONLY dw.mapa_cliente_origem DROP CONSTRAINT IF EXISTS mapa_cliente_origem_pkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_pkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_pedido DROP CONSTRAINT IF EXISTS fato_pedido_id_origem_sistema_origem_key;
+ALTER TABLE IF EXISTS ONLY dw.fato_item_pedido DROP CONSTRAINT IF EXISTS fato_item_pedido_pkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_avaliacao DROP CONSTRAINT IF EXISTS fato_avaliacao_review_id_key;
+ALTER TABLE IF EXISTS ONLY dw.fato_avaliacao DROP CONSTRAINT IF EXISTS fato_avaliacao_pkey;
+ALTER TABLE IF EXISTS ONLY dw.fato_atendimento DROP CONSTRAINT IF EXISTS fato_atendimento_protocolo_key;
+ALTER TABLE IF EXISTS ONLY dw.fato_atendimento DROP CONSTRAINT IF EXISTS fato_atendimento_pkey;
+ALTER TABLE IF EXISTS ONLY dw.dim_tempo DROP CONSTRAINT IF EXISTS dim_tempo_pkey;
+ALTER TABLE IF EXISTS ONLY dw.dim_status DROP CONSTRAINT IF EXISTS dim_status_status_origem_sistema_key;
+ALTER TABLE IF EXISTS ONLY dw.dim_status DROP CONSTRAINT IF EXISTS dim_status_pkey;
+ALTER TABLE IF EXISTS ONLY dw.dim_produto DROP CONSTRAINT IF EXISTS dim_produto_pkey;
+ALTER TABLE IF EXISTS ONLY dw.dim_cliente DROP CONSTRAINT IF EXISTS dim_cliente_pkey;
+ALTER TABLE IF EXISTS ONLY dw.dim_canal DROP CONSTRAINT IF EXISTS dim_canal_pkey;
+ALTER TABLE IF EXISTS ONLY abt.recompra_90d_vazamento DROP CONSTRAINT IF EXISTS pk_recompra_90d_vazamento;
+ALTER TABLE IF EXISTS ONLY abt.recompra_90d DROP CONSTRAINT IF EXISTS pk_recompra_90d;
+ALTER TABLE IF EXISTS qa.quarentena_item_pedido ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE IF EXISTS qa.execucao_assercao ALTER COLUMN id DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.fato_pedido ALTER COLUMN pedido_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.fato_item_pedido ALTER COLUMN item_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.fato_avaliacao ALTER COLUMN avaliacao_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.fato_atendimento ALTER COLUMN atendimento_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.dim_status ALTER COLUMN status_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.dim_produto ALTER COLUMN produto_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.dim_cliente ALTER COLUMN cliente_sk DROP DEFAULT;
+ALTER TABLE IF EXISTS dw.dim_canal ALTER COLUMN canal_sk DROP DEFAULT;
+DROP SEQUENCE IF EXISTS qa.quarentena_item_pedido_id_seq;
+DROP TABLE IF EXISTS qa.quarentena_item_pedido;
+DROP SEQUENCE IF EXISTS qa.execucao_assercao_id_seq;
+DROP TABLE IF EXISTS qa.execucao_assercao;
+DROP TABLE IF EXISTS dw.pedido_conformado;
+DROP TABLE IF EXISTS dw.mapa_cliente_origem;
+DROP TABLE IF EXISTS dw.item_pedido_conformado;
+DROP SEQUENCE IF EXISTS dw.fato_pedido_pedido_sk_seq;
+DROP TABLE IF EXISTS dw.fato_pedido;
+DROP SEQUENCE IF EXISTS dw.fato_item_pedido_item_sk_seq;
+DROP TABLE IF EXISTS dw.fato_item_pedido;
+DROP SEQUENCE IF EXISTS dw.fato_avaliacao_avaliacao_sk_seq;
+DROP TABLE IF EXISTS dw.fato_avaliacao;
+DROP SEQUENCE IF EXISTS dw.fato_atendimento_atendimento_sk_seq;
+DROP TABLE IF EXISTS dw.fato_atendimento;
+DROP TABLE IF EXISTS dw.dim_tempo;
+DROP SEQUENCE IF EXISTS dw.dim_status_status_sk_seq;
+DROP TABLE IF EXISTS dw.dim_status;
+DROP SEQUENCE IF EXISTS dw.dim_produto_produto_sk_seq;
+DROP TABLE IF EXISTS dw.dim_produto;
+DROP SEQUENCE IF EXISTS dw.dim_cliente_cliente_sk_seq;
+DROP TABLE IF EXISTS dw.dim_cliente;
+DROP SEQUENCE IF EXISTS dw.dim_canal_canal_sk_seq;
+DROP TABLE IF EXISTS dw.dim_canal;
+DROP TABLE IF EXISTS dw.avaliacao_conformada;
+DROP TABLE IF EXISTS dw.atendimento_conformado;
+DROP TABLE IF EXISTS abt.recompra_90d_vazamento;
+DROP TABLE IF EXISTS abt.recompra_90d;
+DROP SCHEMA IF EXISTS qa;
+DROP SCHEMA IF EXISTS dw;
+DROP SCHEMA IF EXISTS abt;
 --
 -- Name: abt; Type: SCHEMA; Schema: -; Owner: -
 --
@@ -37,13 +128,6 @@ CREATE SCHEMA dw;
 --
 
 CREATE SCHEMA qa;
-
-
---
--- Name: stg; Type: SCHEMA; Schema: -; Owner: -
---
-
-CREATE SCHEMA stg;
 
 
 SET default_tablespace = '';
@@ -564,210 +648,6 @@ ALTER SEQUENCE qa.quarentena_item_pedido_id_seq OWNED BY qa.quarentena_item_pedi
 
 
 --
--- Name: ecom_category; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.ecom_category (
-    category_id bigint,
-    name text,
-    parent_id double precision,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: ecom_customer; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.ecom_customer (
-    customer_id bigint,
-    full_name text,
-    tax_id text,
-    email text,
-    created_at timestamp with time zone,
-    city text,
-    state text,
-    phone text,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: ecom_order_item; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.ecom_order_item (
-    order_item_id bigint,
-    order_id bigint,
-    product_id bigint,
-    quantity bigint,
-    unit_price double precision,
-    discount double precision,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: ecom_orders; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.ecom_orders (
-    order_id bigint,
-    customer_id bigint,
-    placed_at timestamp with time zone,
-    delivered_at timestamp with time zone,
-    status text,
-    total_amount double precision,
-    freight_amount double precision,
-    channel text,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: ecom_product; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.ecom_product (
-    product_id bigint,
-    sku text,
-    title text,
-    category_id bigint,
-    list_price double precision,
-    active boolean,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: legado_clientes; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.legado_clientes (
-    "ID_CLIENTE" bigint,
-    "NOME" text,
-    "CPF" text,
-    "EMAIL" text,
-    "DT_CADASTRO" date,
-    "CIDADE" text,
-    "UF" text,
-    "TELEFONE" text,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: legado_itens_pedido; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.legado_itens_pedido (
-    "ID_ITEM" bigint,
-    "ID_PEDIDO" bigint,
-    "ID_PRODUTO" bigint,
-    "QTD" bigint,
-    "VL_UNITARIO" double precision,
-    "VL_DESCONTO" double precision,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: legado_pedidos; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.legado_pedidos (
-    "ID_PEDIDO" bigint,
-    "ID_CLIENTE" bigint,
-    "DT_PEDIDO" timestamp without time zone,
-    "DT_ENTREGA" timestamp without time zone,
-    "STATUS" text,
-    "VALOR_TOTAL" double precision,
-    "VALOR_FRETE" double precision,
-    "CANAL" text,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: legado_produtos; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.legado_produtos (
-    "ID_PRODUTO" bigint,
-    "DESCRICAO" text,
-    "CATEGORIA" text,
-    "PRECO_TABELA" double precision,
-    "ATIVO" text,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: marketplace_avaliacoes; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.marketplace_avaliacoes (
-    review_id text,
-    order_ref text,
-    channel text,
-    product_sku text,
-    submitted_at text,
-    rating text,
-    title text,
-    comment text,
-    verified_purchase boolean,
-    helpful_votes double precision,
-    _rating_presente boolean,
-    _title_presente boolean,
-    _comment_presente boolean,
-    _verified_presente boolean,
-    _helpful_presente boolean,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
--- Name: sac_atendimentos; Type: TABLE; Schema: stg; Owner: -
---
-
-CREATE TABLE stg.sac_atendimentos (
-    protocolo text,
-    origem_sistema text,
-    id_pedido_origem text,
-    cpf_cliente text,
-    data_abertura text,
-    data_fechamento text,
-    canal text,
-    motivo text,
-    nota_satisfacao text,
-    tempo_resolucao_horas text,
-    _linha_origem bigint,
-    _fonte text,
-    _extraido_em timestamp with time zone
-);
-
-
---
 -- Name: dim_canal canal_sk; Type: DEFAULT; Schema: dw; Owner: -
 --
 
@@ -1024,10 +904,66 @@ CREATE INDEX ix_dim_produto_sku ON dw.dim_produto USING btree (sku);
 
 
 --
+-- Name: ix_fato_atendimento_cli; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_atendimento_cli ON dw.fato_atendimento USING btree (cliente_sk);
+
+
+--
+-- Name: ix_fato_atendimento_ped; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_atendimento_ped ON dw.fato_atendimento USING btree (pedido_sk);
+
+
+--
+-- Name: ix_fato_avaliacao_data; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_avaliacao_data ON dw.fato_avaliacao USING btree (data_sk);
+
+
+--
+-- Name: ix_fato_avaliacao_ped; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_avaliacao_ped ON dw.fato_avaliacao USING btree (pedido_sk);
+
+
+--
+-- Name: ix_fato_avaliacao_prod; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_avaliacao_prod ON dw.fato_avaliacao USING btree (produto_sk);
+
+
+--
+-- Name: ix_fato_item_pedido_pedido; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_item_pedido_pedido ON dw.fato_item_pedido USING btree (pedido_sk);
+
+
+--
+-- Name: ix_fato_item_pedido_produto; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_item_pedido_produto ON dw.fato_item_pedido USING btree (produto_sk);
+
+
+--
 -- Name: ix_fato_pedido_cli; Type: INDEX; Schema: dw; Owner: -
 --
 
 CREATE INDEX ix_fato_pedido_cli ON dw.fato_pedido USING btree (cliente_sk);
+
+
+--
+-- Name: ix_fato_pedido_cli_data; Type: INDEX; Schema: dw; Owner: -
+--
+
+CREATE INDEX ix_fato_pedido_cli_data ON dw.fato_pedido USING btree (cliente_sk, data_pedido_sk);
 
 
 --
@@ -1169,5 +1105,5 @@ ALTER TABLE ONLY dw.fato_pedido
 -- PostgreSQL database dump complete
 --
 
-\unrestrict RrFiaxp8896Cd6aD8yWxoC5A6kd4AZvURyboLyc2J41MbIGgMuoQ5DCLl4cSm0D
+\unrestrict odQFEJfiUs4YJxXhyJXlnY9LEaHh3nKQ39eKSlZcLMUUg8gMb3pu5E2Cjn6EtWn
 

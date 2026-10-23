@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ETAPA 5 — EXPORTAÇÃO PARA O ORANGE  (pronto, não precisa alterar)
+ETAPA 5 — EXPORTAÇÃO PARA O ORANGE E EVIDÊNCIAS DA CARGA
 
 Gera dois CSVs em /saida, prontos para o widget File do Orange:
 
@@ -12,6 +12,10 @@ O cabeçalho sai no formato de três linhas do Orange, que já declara tipo e
 papel de cada coluna — assim vocês não precisam reconfigurar o widget a cada
 recarga, e o alvo nunca entra como atributo por engano.
 
+No fim, também recria as evidências da Semana 3 (resumos, asserções, perfil
+da ABT e dump SQL do dw/qa/abt), para que os seis comandos do README sejam
+suficientes para reproduzir os artefatos.
+
     docker compose exec etl python 05_exportar_orange.py
 """
 
@@ -21,6 +25,7 @@ import pandas as pd
 from sqlalchemy import text
 
 from config import DIR_SAIDA, eng_dw
+from evidencias import exporta_evidencias
 
 ALVO = "alvo_recompra_90d"
 IGNORAR = {"cliente_sk", "data_corte"}
@@ -36,7 +41,8 @@ def tipo_orange(serie):
 
 def exporta(tabela, arquivo, dw):
     try:
-        df = pd.read_sql(text(f"SELECT * FROM abt.{tabela}"), dw)
+        df = pd.read_sql(
+            text(f"SELECT * FROM abt.{tabela} ORDER BY cliente_sk"), dw)
     except Exception as e:                                   # noqa: BLE001
         print(f"  [pular] abt.{tabela} indisponível: {type(e).__name__}")
         return
@@ -71,6 +77,7 @@ if __name__ == "__main__":
     print("exportando para o Orange:")
     exporta("recompra_90d", "abt_recompra_correta.csv", dw)
     exporta("recompra_90d_vazamento", "abt_recompra_vazamento.csv", dw)
+    exporta_evidencias(dw)
     print("""
 No Orange, monte o mesmo fluxo para os dois arquivos:
 

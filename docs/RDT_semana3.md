@@ -319,11 +319,12 @@ sozinho a diferença. O resultado é registrado como observado, não ajustado.
 Atributos com ausência: `recencia_dias` nula em 2.945 clientes sem compra
 válida; `nota_media_avaliacoes` nula em 38.876; `prazo_medio_entrega` nulo em
 **7.388** após excluir 2.338 pedidos com entrega posterior ao corte (2.245
-valores corrigidos). A ABT com vazamento usa os mesmos clientes e a mesma taxa, mas
-`recencia_dias` fica negativa para **43.095** clientes (mínimo −183), a
+valores corrigidos). A ABT com vazamento usa os mesmos clientes e a mesma
+taxa, mas `recencia_dias` fica negativa para **43.095** clientes (mínimo
+−183), a
 frequência máxima sobe de 17 para 19 e `valor_monetario_z` tem mínimo −1,3527
-e máximo 7,7007. `recencia_dias` difere da versão correta em 44.932 clientes e
-`frequencia_pedidos` em 43.095.
+e máximo 7,7007. `recencia_dias` e `frequencia_pedidos` diferem da versão
+correta em 43.095 clientes.
 
 A materialização usa `to_sql(if_exists="replace")`, que remove as constraints
 do DDL; após a carga, `04_abt.py` restaura PK `(cliente_sk, data_corte)`, FK
@@ -355,13 +356,18 @@ foi regerado com esse contrato.
 * `saida/resumo_reconciliacao.csv` — origem × DW;
 * `saida/abt_resumo.csv` e `saida/abt_colunas.csv` — perfil da ABT;
 * `saida/dw_schema.sql` — DDL do DW, QA e ABT;
+* `saida/dw_dump.sql` (ou `saida/dw_dump.sql.gz`, se o arquivo ultrapassar
+  95 MB) — dump SQL com schema e dados finais de `dw`, `qa` e `abt`, sem
+  staging e sem as tabelas conformadas intermediárias;
 * `saida/abt_recompra_correta.csv` e `saida/abt_recompra_vazamento.csv` — ABTs
   no formato do Orange.
 
-Asserções da última execução: **01 = 24**, **02 = 21**, **03 = 24**,
-**04 correta = 5**, **04 vazamento = 3**; nenhuma falha. Os totais históricos
-são 83, 10 e 6 para 02, 04 correta e 04 vazamento porque essas etapas foram
-reexecutadas durante a correção; todas as execuções terminaram sem falha.
+Todos esses arquivos são regerados pelo sexto comando do pipeline
+(`05_exportar_orange.py`), sem intervenção manual.
+
+Asserções da última execução: **01 = 12**, **02 = 21**, **03 = 24**,
+**04 correta = 6**, **04 vazamento = 3** — **66 no total, nenhuma falha**.
+O CSV é regerado a cada execução, sem acumular execuções anteriores.
 
 ---
 

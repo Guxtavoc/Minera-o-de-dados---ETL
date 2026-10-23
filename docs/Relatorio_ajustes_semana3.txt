@@ -1,0 +1,102 @@
+INSTITUTO FEDERAL DE MATO GROSSO — IFMT
+Alunos: Gustavo Curado Soares, Marcelo Henrique
+Professor: Orlando Junior
+Disciplina: Mineração de Dados
+
+Relatório de ajustes — Semana 3 — "Carregar e verificar"
+Data: 23/10/2026
+
+1. Objetivo
+
+Fechar as pendências identificadas na branch feat/entrega-semana3: gerar um
+dump SQL com dados, automatizar as evidências da carga e corrigir os números
+desatualizados do RDT. Depois, executar o pipeline completo do zero em Docker
+para confirmar a reprodutibilidade.
+
+2. Ajustes realizados
+
+2.1 Evidências automáticas
+
+Foi criado o módulo etl/evidencias.py, chamado ao final de
+05_exportar_orange.py. Com isso, o sexto comando do pipeline passa a regerar,
+sem intervenção manual:
+
+- saida/resumo_carga.csv;
+- saida/resumo_reconciliacao.csv;
+- saida/qa_execucao_assercao.csv;
+- saida/abt_resumo.csv e saida/abt_colunas.csv;
+- saida/dw_schema.sql;
+- saida/dw_dump.sql ou saida/dw_dump.sql.gz.
+
+Os CSVs de ABT para o Orange também passaram a ser exportados em ordem de
+cliente_sk, o que torna o arquivo determinístico entre execuções.
+
+2.2 Dump SQL com dados
+
+O antigo saida/dw_schema.sql era somente DDL. Agora o pipeline gera também um
+dump SQL com schema e dados finais de dw, qa e abt. O staging e as tabelas
+conformadas intermediárias ficam de fora porque são reconstruídos pelo próprio
+pipeline.
+
+Como o dump ficou maior que 95 MB, ele é gravado comprimido:
+saida/dw_dump.sql.gz (46,9 MB; 134,3 MB de SQL descomprimido).
+
+O dump foi restaurado em um banco vazio (mercatto_dw_restore) para teste. As
+contagens bateram com a origem:
+
+- dw.fato_pedido: 410.000 linhas;
+- dw.fato_item_pedido: 1.371.876 linhas;
+- dw.dim_cliente: 114.548 linhas;
+- qa.execucao_assercao: 66 linhas;
+- abt.recompra_90d: 107.091 linhas.
+
+Também foi verificado que o DDL saida/dw_schema.sql restaura corretamente no
+PostgreSQL 16.
+
+2.3 Correções no RDT
+
+O RDT da Semana 3 foi ajustado para refletir a execução real:
+
+- prazo_medio_entrega nulo: 7.388 clientes (o valor antigo do CSV era 7.143);
+- recencia_dias e frequencia_pedidos diferem da ABT correta em 43.095 clientes
+  (antes o texto dizia 44.932 para recência);
+- asserções da última execução: 12 na extração, 21 na transformação, 24 na
+  carga, 6 na ABT correta e 3 na ABT com vazamento — 66 no total, sem falhas.
+
+A lista de evidências do RDT também passou a citar o dump SQL com dados e a
+geração automática pelo sexto comando.
+
+3. Execução e testes
+
+O teste foi feito do zero, conforme o entregável 5:
+
+- docker compose down -v;
+- remoção da pasta dados;
+- docker compose up -d --build;
+- execução dos seis comandos do pipeline na ordem.
+
+O seed gerou e carregou 2.205.843 registros. As duas fontes de arquivo tinham
+96.140 linhas de SAC e 160.000 avaliações.
+
+Resultado das asserções: 66 asserções, 0 falhas.
+
+Reconciliação financeira (tolerância de 0,1%):
+
+- LEGADO: origem R$ 281.084.957,13; DW R$ 281.117.154,85; desvio +0,011455%;
+- ECOM: origem R$ 745.850.860,33; DW R$ 745.915.357,63; desvio +0,008647%.
+
+Carga final:
+
+- dw.fato_pedido: 410.000 linhas, R$ 1.027.032.512,48;
+- dw.fato_item_pedido: 1.371.876 linhas, R$ 1.010.183.124,51;
+- qa.quarentena_item_pedido: 20.577 linhas, R$ 2.791.092,30;
+- dw.fato_atendimento: 95.000 linhas;
+- dw.fato_avaliacao: 160.000 linhas;
+- abt.recompra_90d: 107.091 clientes, 24.008 positivos, taxa 0,2242.
+
+4. Conclusão
+
+A branch passa a atender aos requisitos da Semana 3 com evidências
+reproduzíveis: DW carregado, asserções registradas, reconciliação dentro de
+0,1%, fichas RDT-10 a RDT-13 e dump SQL com dados, validado por restauração.
+O pipeline continua com os mesmos seis comandos e roda do zero em Docker.

@@ -1,0 +1,67 @@
+id,executado_em,etapa,nome,descricao,valor_obtido,valor_esperado,aprovado
+1,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas legado_clientes,extração que perde linha silenciosamente é o defeito mais caro,47250.0,= 47250,t
+2,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas legado_produtos,extração que perde linha silenciosamente é o defeito mais caro,3000.0,= 3000,t
+3,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas legado_pedidos,extração que perde linha silenciosamente é o defeito mais caro,130000.0,= 130000,t
+4,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas legado_itens_pedido,extração que perde linha silenciosamente é o defeito mais caro,397086.0,= 397086,t
+5,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas ecom_category,contagem do stg deve bater com a origem,21.0,= 21,t
+6,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas ecom_customer,contagem do stg deve bater com a origem,85000.0,= 85000,t
+7,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas ecom_product,contagem do stg deve bater com a origem,12000.0,= 12000,t
+8,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas ecom_orders,contagem do stg deve bater com a origem,280000.0,= 280000,t
+9,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas ecom_order_item,contagem do stg deve bater com a origem,995367.0,= 995367,t
+10,2026-10-23 21:26:26.451002+00:00,01_extracao,linhas stg.sac_atendimentos,contagem total do CSV concatenado,96140.0,= 96140,t
+11,2026-10-23 21:26:26.451002+00:00,01_extracao,protocolo do SAC,,0.0,= 0 nulos,t
+12,2026-10-23 21:26:26.451002+00:00,01_extracao,review_id,,0.0,= 0 duplicados,t
+13,2026-10-23 21:34:43.397662+00:00,02_transformacao,dim_cliente: cpf valido duplicado,dois clientes validos nao podem compartilhar o mesmo CPF,0.0,= 0 duplicados,t
+14,2026-10-23 21:34:43.397662+00:00,02_transformacao,dim_cliente: origem_unificacao,,0.0,"todos em ['AMBOS', 'ECOM', 'LEGADO']",t
+15,2026-10-23 21:34:43.397662+00:00,02_transformacao,dim_cliente: id_legado duplicado,cada id do legado deve aparecer em no maximo uma identidade,0.0,= 0,t
+16,2026-10-23 21:34:43.397662+00:00,02_transformacao,dim_cliente: id_ecommerce duplicado,cada id do ecommerce deve aparecer em no maximo uma identidade,0.0,= 0,t
+17,2026-10-23 21:34:43.397662+00:00,02_transformacao,mapa_cliente_origem: chave duplicada,o mapa deve ter uma linha por cliente original,0.0,= 0,t
+18,2026-10-23 21:34:43.397662+00:00,02_transformacao,mapa_cliente_origem: linhas,todo cliente bruto das duas origens deve estar no mapa,132250.0,= 132250,t
+19,2026-10-23 21:34:43.397662+00:00,02_transformacao,mapa LEGADO: canonico ausente na dim,todo id canonico do legado deve existir na dimensao,0.0,= 0,t
+20,2026-10-23 21:34:43.397662+00:00,02_transformacao,mapa ECOM: canonico ausente na dim,todo id canonico do ecommerce deve existir na dimensao,0.0,= 0,t
+21,2026-10-23 21:34:43.397662+00:00,02_transformacao,dim_cliente <= legado + ecommerce (pos dedup),a unificacao so pode reduzir o numero de identidades,114548.0,<= 129824,t
+22,2026-10-23 21:34:43.397662+00:00,02_transformacao,status de origem nao mapeado,um status novo na origem quebraria a analise,0.0,= 0,t
+23,2026-10-23 21:34:43.397662+00:00,02_transformacao,status_conformado,,0.0,"todos em ['CANCELADO', 'EM_PROCESSAMENTO', 'EM_TRANSITO', 'ENTREGUE']",t
+24,2026-10-23 21:34:43.397662+00:00,02_transformacao,canal de origem nao mapeado,canal novo na origem quebraria a analise,0.0,= 0,t
+25,2026-10-23 21:34:43.397662+00:00,02_transformacao,valor_mercadoria legado == soma itens,medida do fato deve reproduzir a soma dos itens,0.0,= 0,t
+26,2026-10-23 21:34:43.397662+00:00,02_transformacao,valor_mercadoria ecom == soma itens,medida do fato deve reproduzir a soma dos itens,0.0,= 0,t
+27,2026-10-23 21:34:43.397662+00:00,02_transformacao,dim_produto: descricao nula,descricao e NOT NULL na dimensao,0.0,= 0,t
+28,2026-10-23 21:34:43.397662+00:00,02_transformacao,dias_entrega negativo,entrega anterior ao pedido deve ter sido anulada,0.0,= 0,t
+29,2026-10-23 21:34:43.397662+00:00,02_transformacao,SAC: protocolo duplicado,um protocolo deve representar um unico atendimento,0.0,= 0,t
+30,2026-10-23 21:34:43.397662+00:00,02_transformacao,avaliacoes: data nula,todo submitted_at deve ser interpretado como data local,0.0,= 0,t
+31,2026-10-23 21:34:43.397662+00:00,02_transformacao,avaliacoes: sem pedido,toda avaliacao deve ligar a um pedido pela chave natural,0.0,= 0,t
+32,2026-10-23 21:34:43.397662+00:00,02_transformacao,pedido_conformado total,todo pedido das duas origens deve existir no conformado,410000.0,= 410000,t
+33,2026-10-23 21:34:43.397662+00:00,02_transformacao,item_pedido_conformado total,todo item das duas origens deve existir no conformado,1392453.0,= 1392453,t
+34,2026-10-23 21:35:55.485250+00:00,03_carga_dw,dim_cliente carregada,,114548.0,>= 1,t
+35,2026-10-23 21:35:55.485250+00:00,03_carga_dw,dim_produto carregada,,15000.0,>= 1,t
+36,2026-10-23 21:35:55.485250+00:00,03_carga_dw,dim_canal carregada,,6.0,>= 1,t
+37,2026-10-23 21:35:55.485250+00:00,03_carga_dw,dim_status carregada,,9.0,>= 1,t
+38,2026-10-23 21:35:55.485250+00:00,03_carga_dw,dim_produto: id_legado duplicado,,0.0,= 0,t
+39,2026-10-23 21:35:55.485250+00:00,03_carga_dw,dim_produto: id_ecommerce duplicado,,0.0,= 0,t
+40,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: cliente sem mapeamento,todo pedido deve ter cliente_sk via mapa canonico,0.0,= 0,t
+41,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: canal sem mapeamento,,0.0,= 0,t
+42,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: status sem mapeamento,,0.0,= 0,t
+43,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: data fora do calendario,,0.0,= 0,t
+44,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: linhas,uma linha por pedido conformado,410000.0,= 410000,t
+45,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: FK orfa,,0.0,= 0,t
+46,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_pedido: dias_entrega negativo,,0.0,= 0,t
+47,2026-10-23 21:35:55.485250+00:00,03_carga_dw,reconciliacao financeira LEGADO,"fato dentro de ±0,1% do total da origem",1.0001145480011688,"[0.999, 1.001]",t
+48,2026-10-23 21:35:55.485250+00:00,03_carga_dw,reconciliacao financeira ECOM,"fato dentro de ±0,1% do total da origem",1.000086474794663,"[0.999, 1.001]",t
+49,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_item: produto sem mapeamento,,0.0,= 0,t
+50,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_item: linhas,apenas itens com pedido entram no esquema estrela,1371876.0,= 1371876,t
+51,2026-10-23 21:35:55.485250+00:00,03_carga_dw,quarentena: itens sem pedido,,20577.0,= 20577,t
+52,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_atendimento: SAC sem pedido,,0.0,= 0,t
+53,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_avaliacao: avaliacao sem pedido,,0.0,= 0,t
+54,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_avaliacao: data nula,,0.0,= 0,t
+55,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_atendimento: linhas,,95000.0,= 95000,t
+56,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_avaliacao: linhas,,160000.0,= 160000,t
+57,2026-10-23 21:35:55.485250+00:00,03_carga_dw,fato_avaliacao: produto nao mapeado,todo product_ref (SKU- ou LEG-) deve achar um produto,0.0,= 0,t
+58,2026-10-23 21:36:40.032959+00:00,04_abt_correta,taxa do alvo,classe extremamente desbalanceada indica erro na janela,0.22418317132158633,"[0.02, 0.6]",t
+59,2026-10-23 21:36:40.032959+00:00,04_abt_correta,cliente_sk no alvo,,0.0,= 0 duplicados,t
+60,2026-10-23 21:36:40.032959+00:00,04_abt_correta,junção alvo x atributos,junção não pode multiplicar linhas,107091.0,<= 107091,t
+61,2026-10-23 21:36:40.032959+00:00,04_abt_correta,ABT correta: frequencia (amostra),frequencia deve ignorar pedidos posteriores ao corte,0.0,= 0,t
+62,2026-10-23 21:36:40.032959+00:00,04_abt_correta,ABT correta: recencia (amostra),recencia deve ignorar pedidos posteriores ao corte,0.0,= 0,t
+63,2026-10-23 21:36:40.032959+00:00,04_abt_correta,ABT correta: prazo (amostra),prazo deve ignorar entregas posteriores ao corte,0.0,= 0,t
+64,2026-10-23 21:37:22.369621+00:00,04_abt_vazamento,taxa do alvo,classe extremamente desbalanceada indica erro na janela,0.22418317132158633,"[0.02, 0.6]",t
+65,2026-10-23 21:37:22.369621+00:00,04_abt_vazamento,cliente_sk no alvo,,0.0,= 0 duplicados,t
+66,2026-10-23 21:37:22.369621+00:00,04_abt_vazamento,junção alvo x atributos,junção não pode multiplicar linhas,107091.0,<= 107091,t

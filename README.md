@@ -54,9 +54,10 @@ As duas fontes de arquivo ficam em `./dados/`:
 │   ├── 02_transformacao.py   esqueleto
 │   ├── 03_carga_dw.py        esqueleto
 │   ├── 04_abt.py             esqueleto (inclui o experimento de vazamento)
-│   ├── 05_exportar_orange.py PRONTO — exporta a ABT para o Orange
+│   ├── 05_exportar_orange.py exporta a ABT, as evidências e o dump SQL
+│   ├── evidencias.py         resumos, asserções e dump do DW
 │   └── qualidade/assercoes.py PRONTO — framework de asserções
-├── saida/                    relatórios e CSVs para o Orange
+├── saida/                    relatórios, CSVs do Orange e dump do DW
 └── docs/
     ├── DICIONARIO_DE_DADOS.md   incompleto, como na vida real
     └── MODELO_RDT.md            modelo do Registro de Decisões
@@ -84,6 +85,26 @@ docker compose exec etl python 05_exportar_orange.py
 O pipeline precisa rodar do zero, na ordem, sem intervenção manual. Isso é
 avaliado: `docker compose down -v && docker compose up -d --build` seguido dos
 seis comandos acima tem de reproduzir exatamente o mesmo resultado.
+
+O último comando também regera, em `saida/`:
+
+* `resumo_carga.csv`, `resumo_reconciliacao.csv` e `qa_execucao_assercao.csv`;
+* `abt_resumo.csv` e `abt_colunas.csv`;
+* `dw_schema.sql` (DDL de `dw`, `qa` e `abt`) e `dw_dump.sql` (schema + dados
+  finais, sem `stg` e sem as tabelas conformadas intermediárias); se o dump
+  passar de 95 MB, ele é gravado como `dw_dump.sql.gz`.
+
+Para restaurar o dump em um banco vazio:
+
+```bash
+docker compose exec pg_dw createdb -U postgres mercatto_dw_restore
+
+# dump SQL sem compressão:
+docker compose exec -T pg_dw psql -U postgres -d mercatto_dw_restore -f - < saida/dw_dump.sql
+
+# dump SQL comprimido:
+docker compose exec -T etl sh -c "gzip -dc /saida/dw_dump.sql.gz | psql 'postgresql://postgres:postgres@pg_dw:5432/mercatto_dw_restore' -v ON_ERROR_STOP=1"
+```
 
 ## 6. Consultar as asserções
 

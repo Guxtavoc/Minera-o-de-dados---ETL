@@ -1,24 +1,13 @@
--- ---------------------------------------------------------------------------
 -- Repositório analítico "Mercatto DW"  ·  PostgreSQL 16 · UTF-8
---
--- Três camadas, com responsabilidades distintas (ver seção 2.3 do referencial):
---   stg  staging   — cópia fiel das origens, sem transformação semântica
---   dw   integrado — esquema estrela conformado, conservador, sem perda
---   abt  analítico — tabela-base de análise, específica de UMA pergunta
--- ---------------------------------------------------------------------------
+-- Camadas: stg preserva as origens, dw integra o esquema estrela e abt atende à pergunta preditiva.
 CREATE SCHEMA IF NOT EXISTS stg;
 CREATE SCHEMA IF NOT EXISTS dw;
 CREATE SCHEMA IF NOT EXISTS abt;
-CREATE SCHEMA IF NOT EXISTS qa;   -- resultados das asserções de qualidade
+CREATE SCHEMA IF NOT EXISTS qa;  -- Resultados das asserções de qualidade.
 
--- ===========================================================================
--- CAMADA stg — vocês criam. Regra: nomes e tipos espelham a origem.
--- Nada de renomear, nada de converter significado. Só trazer.
--- ===========================================================================
+-- stg: nomes e tipos espelham as origens, sem conversão semântica.
 
--- ===========================================================================
--- CAMADA dw — esquema estrela
--- ===========================================================================
+-- dw: esquema estrela conformado.
 DROP TABLE IF EXISTS dw.fato_item_pedido CASCADE;
 DROP TABLE IF EXISTS dw.fato_pedido      CASCADE;
 DROP TABLE IF EXISTS dw.mapa_cliente_origem CASCADE;
@@ -28,8 +17,7 @@ DROP TABLE IF EXISTS dw.dim_tempo        CASCADE;
 DROP TABLE IF EXISTS dw.dim_canal        CASCADE;
 DROP TABLE IF EXISTS dw.dim_status       CASCADE;
 
--- GRÃO: um cliente unificado. Um mesmo indivíduo presente nos dois sistemas
--- de origem deve ocupar UMA linha, com rastro de ambas as origens.
+-- Grão: um cliente unificado, com procedência das duas origens.
 CREATE TABLE dw.dim_cliente (
   cliente_sk        BIGSERIAL PRIMARY KEY,
   cpf_normalizado   CHAR(11)     NULL,   -- apenas dígitos; NULL quando ausente
@@ -48,9 +36,7 @@ CREATE INDEX ix_dim_cliente_cpf ON dw.dim_cliente (cpf_normalizado);
 CREATE INDEX ix_dim_cliente_id_legado ON dw.dim_cliente (id_legado);
 CREATE INDEX ix_dim_cliente_id_ecommerce ON dw.dim_cliente (id_ecommerce);
 
--- Ponte de procedência: todo id original (inclusive os removidos na dedup)
--- aponta para o id canônico que sobreviveu na dimensão. A etapa 3 usa este
--- mapa para não perder pedidos que referenciavam uma linha duplicada.
+-- Mapeia cada ID original, inclusive duplicado, para o cliente canônico.
 CREATE TABLE dw.mapa_cliente_origem (
   sistema           TEXT   NOT NULL,
   id_origem_natural BIGINT NOT NULL,
@@ -59,7 +45,7 @@ CREATE TABLE dw.mapa_cliente_origem (
   PRIMARY KEY (sistema, id_origem_natural)
 );
 
--- GRÃO: um produto conformado.
+-- Grão: um produto conformado.
 CREATE TABLE dw.dim_produto (
   produto_sk       BIGSERIAL PRIMARY KEY,
   sku              TEXT        NULL,
@@ -95,8 +81,7 @@ CREATE TABLE dw.dim_canal (
   sistema      TEXT NOT NULL
 );
 
--- Esta dimensão materializa a AMBIGUIDADE 2 do enunciado.
--- 'cancelado_conformado' é a decisão de vocês; documentem-na no RDT.
+-- Materializa a conformação de cancelamentos registrada no RDT.
 CREATE TABLE dw.dim_status (
   status_sk            SERIAL PRIMARY KEY,
   status_origem        TEXT NOT NULL,
@@ -106,7 +91,7 @@ CREATE TABLE dw.dim_status (
   UNIQUE (status_origem, sistema)
 );
 
--- GRÃO: UM PEDIDO. Declarem isto no relatório antes de escrever a carga.
+-- Grão: um pedido.
 CREATE TABLE dw.fato_pedido (
   pedido_sk        BIGSERIAL PRIMARY KEY,
   id_origem        TEXT   NOT NULL,   -- 'LEG-123' | 'ECOM-456'
@@ -128,7 +113,7 @@ CREATE INDEX ix_fato_pedido_cli  ON dw.fato_pedido (cliente_sk);
 CREATE INDEX ix_fato_pedido_data ON dw.fato_pedido (data_pedido_sk);
 CREATE INDEX ix_fato_pedido_cli_data ON dw.fato_pedido (cliente_sk, data_pedido_sk);
 
--- GRÃO: UMA LINHA DE ITEM DE UM PEDIDO.
+-- Grão: uma linha de item de pedido.
 CREATE TABLE dw.fato_item_pedido (
   item_sk     BIGSERIAL PRIMARY KEY,
   pedido_sk   BIGINT NOT NULL REFERENCES dw.fato_pedido (pedido_sk),
@@ -141,7 +126,7 @@ CREATE TABLE dw.fato_item_pedido (
 CREATE INDEX ix_fato_item_pedido_pedido  ON dw.fato_item_pedido (pedido_sk);
 CREATE INDEX ix_fato_item_pedido_produto ON dw.fato_item_pedido (produto_sk);
 
--- Ponte para o atendimento e a avaliação: grão de UM atendimento / UMA avaliação.
+-- Grão: um atendimento ou uma avaliação, conforme a tabela.
 CREATE TABLE IF NOT EXISTS dw.fato_atendimento (
   atendimento_sk  BIGSERIAL PRIMARY KEY,
   protocolo       TEXT   NOT NULL UNIQUE,
@@ -172,19 +157,8 @@ CREATE INDEX IF NOT EXISTS ix_fato_avaliacao_ped    ON dw.fato_avaliacao (pedido
 CREATE INDEX IF NOT EXISTS ix_fato_avaliacao_prod   ON dw.fato_avaliacao (produto_sk);
 CREATE INDEX IF NOT EXISTS ix_fato_avaliacao_data   ON dw.fato_avaliacao (data_sk);
 
--- ===========================================================================
--- CAMADA abt — tabela-base de análise
---
--- PERGUNTA: dado o comportamento do cliente ATÉ a data de corte,
---           ele fará uma nova compra nos 90 dias seguintes?
---
---   data_corte        = 2025-06-30
---   janela do alvo    = 2025-07-01 .. 2025-09-28
---
--- CONTRATO OBRIGATÓRIO: as três colunas abaixo, com estes nomes e tipos.
--- As demais colunas (atributos preditivos) são projeto de vocês.
--- REGRA INEGOCIÁVEL: nenhum atributo pode usar dado posterior a data_corte.
--- ===========================================================================
+-- abt: prevê recompra entre 2025-07-01 e 2025-09-28 com dados até 2025-06-30.
+-- cliente_sk, data_corte e alvo_recompra_90d formam o contrato mínimo.
 DROP TABLE IF EXISTS abt.recompra_90d CASCADE;
 CREATE TABLE abt.recompra_90d (
   cliente_sk            BIGINT  NOT NULL REFERENCES dw.dim_cliente (cliente_sk),
@@ -205,9 +179,7 @@ CREATE TABLE abt.recompra_90d (
   PRIMARY KEY (cliente_sk, data_corte)
 );
 
--- ===========================================================================
--- CAMADA qa — registro das asserções de qualidade (princípio 6)
--- ===========================================================================
+-- qa: resultados das asserções e registros em quarentena.
 CREATE TABLE IF NOT EXISTS qa.execucao_assercao (
   id           BIGSERIAL PRIMARY KEY,
   executado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -219,8 +191,7 @@ CREATE TABLE IF NOT EXISTS qa.execucao_assercao (
   aprovado     BOOLEAN NOT NULL
 );
 
--- Itens sem pedido não entram no esquema estrela, mas não são apagados:
--- ficam aqui com a chave natural e o valor, para recuperação/auditoria.
+-- Itens sem pedido ficam disponíveis para auditoria e recuperação.
 CREATE TABLE IF NOT EXISTS qa.quarentena_item_pedido (
   id                  BIGSERIAL PRIMARY KEY,
   id_origem           TEXT   NOT NULL,   -- 'LEG-...' | 'ECOM-...'

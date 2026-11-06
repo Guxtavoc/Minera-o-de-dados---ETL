@@ -40,7 +40,7 @@ class Suite:
     etapa: str
     resultados: List[Resultado] = field(default_factory=list)
 
-    # -- verificações -------------------------------------------------------
+    # Verificações
     def igual(self, nome, obtido, esperado, descricao=""):
         ok = obtido == esperado
         self.resultados.append(Resultado(nome, descricao, _num(obtido),
@@ -92,7 +92,7 @@ class Suite:
         self.resultados.append(Resultado(nome, descricao, orfaos, "= 0 órfãos", ok))
         return ok
 
-    # -- persistência e relato ---------------------------------------------
+    # Persistência e relato
     def registrar(self, engine):
         sql = text("""
             INSERT INTO qa.execucao_assercao

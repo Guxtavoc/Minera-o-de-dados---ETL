@@ -1,1 +1,1 @@
-# pacote de qualidade do pipeline
+"""Asserções de qualidade do pipeline."""

@@ -33,16 +33,13 @@ from sqlalchemy import text
 from config import eng_dw
 from qualidade.assercoes import Suite
 
-# Fuso único de padronização. America/Sao_Paulo está em UTC-3 fixo desde 2019
-# (sem horário de verão), então um offset fixo é fiel e não depende do tzdata.
+# America/Sao_Paulo usa UTC-3 fixo desde 2019; o offset evita dependência de tzdata.
 FUSO_SP = timezone(timedelta(hours=-3), "America/Sao_Paulo")
 
 METRICAS = {}
 
 
-# ---------------------------------------------------------------------------
-# Utilitários — prontos.
-# ---------------------------------------------------------------------------
+# Utilitários
 def so_digitos(txt):
     return re.sub(r"\D", "", txt or "")
 
@@ -198,9 +195,7 @@ def _deduplica_com_mapa(df, id_col, sistema):
     return df_canon, mapa_df, metricas
 
 
-# ===========================================================================
-# DECISÃO 1 — IDENTIDADE DO CLIENTE ENTRE OS DOIS SISTEMAS
-# ===========================================================================
+# Decisão 1: identidade do cliente entre os sistemas
 def unifica_clientes(qa):
     """
     RDT-02 / RDT-03.
@@ -218,7 +213,7 @@ def unifica_clientes(qa):
     leg = ler("legado_clientes", dw)
     eco = ler("ecom_customer", dw)
 
-    # ---- prepara o legado ---------------------------------------------------
+    # Prepara e deduplica o legado.
     leg = pd.DataFrame({
         "id_legado": leg["ID_CLIENTE"].astype("int64"),
         "nome_padronizado": leg["NOME"].map(normaliza_nome),
@@ -231,13 +226,11 @@ def unifica_clientes(qa):
     })
     leg["cpf_valido"] = [cpf_valido(c) for c in leg["cpf_normalizado"]]
 
-    # colisões de CPF (em especial inválido) entre pessoas distintas: mede o
-    # falso positivo latente de usar o CPF como ponte, ANTES da dedup.
+    # Mede colisões antes da deduplicação para expor falsos positivos por CPF.
     por_cpf_nomes = (leg[leg["cpf_normalizado"].notna()]
                      .groupby("cpf_normalizado")["nome_padronizado"].nunique())
     cpfs_colididos = int((por_cpf_nomes > 1).sum())
 
-    # ---- deduplicação interna do legado (RDT-03) ---------------------------
     antes = len(leg)
     leg["_nc"] = (leg["nome_padronizado"] + "|" + leg["cidade"].fillna("")
                   + "|" + leg["uf"].fillna(""))
@@ -253,7 +246,7 @@ def unifica_clientes(qa):
         "remapeados": int(met_leg["remapeados"]),
     }
 
-    # ---- prepara o e-commerce ----------------------------------------------
+    # Aplica ao e-commerce a mesma regra de deduplicação em duas passagens.
     eco = pd.DataFrame({
         "id_ecommerce": eco["customer_id"].astype("int64"),
         "nome_padronizado": eco["full_name"].map(normaliza_nome),
@@ -265,7 +258,6 @@ def unifica_clientes(qa):
     eco["dt_cadastro"] = pd.to_datetime(eco["dt_cadastro"], errors="coerce")
     eco["cpf_valido"] = [cpf_valido(c) for c in eco["cpf_normalizado"]]
 
-    # deduplicação interna do e-commerce (mesma regra do legado, duas passagens)
     eco_antes = len(eco)
     eco["_nc"] = (eco["nome_padronizado"] + "|" + eco["cidade"].fillna("")
                   + "|" + eco["uf"].fillna(""))
@@ -273,7 +265,7 @@ def unifica_clientes(qa):
     METRICAS["RDT02_ecom_dedup"] = int(met_eco["duplicatas_removidas_total"])
     METRICAS["RDT03_ecom"] = met_eco
 
-    # ---- pareamento por CPF (a ponte principal) ----------------------------
+    # O CPF é a ponte principal entre as origens.
     a = leg[leg["cpf_normalizado"].notna()]
     b = eco[eco["cpf_normalizado"].notna()]
     par_cpf = a.merge(b, on="cpf_normalizado", how="inner",
@@ -296,7 +288,7 @@ def unifica_clientes(qa):
             id_ecommerce=int(r["id_ecommerce"]),
             origem_unificacao="AMBOS", regra_pareamento="CPF"))
 
-    # ---- pareamento por nome + cidade + UF (sem CPF) -----------------------
+    # Sem CPF, usa nome, cidade e UF apenas em correspondências 1:1.
     leg_r = leg[~leg["id_legado"].isin(id_leg_usado)].copy()
     eco_r = eco[~eco["id_ecommerce"].isin(id_eco_usado)].copy()
     leg_r["_nc"] = (leg_r["nome_padronizado"] + "|" + leg_r["cidade"].fillna("")
@@ -304,10 +296,8 @@ def unifica_clientes(qa):
     eco_r["_nc"] = (eco_r["nome_padronizado"] + "|" + eco_r["cidade"].fillna("")
                     + "|" + eco_r["uf"].fillna(""))
     par_nc_bruto = leg_r.merge(eco_r, on="_nc", how="inner", suffixes=("_l", "_e"))
-    # colisão: uma chave nome+cidade+UF que casa mais de uma pessoa distinta
     nc_colididos = int(par_nc_bruto.groupby("_nc")["id_legado"].nunique().gt(1).sum())
-    # RDT-02: fallback só vale 1:1. Chaves com mais de um cliente de um dos
-    # lados não são pareadas; esses clientes seguem como linhas de origem única.
+    # Chaves ambíguas permanecem como linhas de origem única.
     unicos_l = par_nc_bruto.groupby("_nc")["id_legado"].nunique().eq(1)
     unicos_e = par_nc_bruto.groupby("_nc")["id_ecommerce"].nunique().eq(1)
     chaves_1x1 = unicos_l[unicos_l & unicos_e].index
@@ -327,7 +317,7 @@ def unifica_clientes(qa):
             id_legado=int(r["id_legado"]), id_ecommerce=int(r["id_ecommerce"]),
             origem_unificacao="AMBOS", regra_pareamento="NOME_CIDADE_UF"))
 
-    # ---- somente legado / somente e-commerce -------------------------------
+    # Mantém também clientes presentes em apenas uma origem.
     so_leg = leg[~leg["id_legado"].isin(id_leg_usado | id_leg_nc)]
     for _, r in so_leg.iterrows():
         linhas.append(dict(
@@ -356,7 +346,7 @@ def unifica_clientes(qa):
     mapa = pd.concat([mapa_leg, mapa_eco], ignore_index=True)
     grava_mapa_clientes(dw, mapa)
 
-    # ---- métricas do RDT-02 ------------------------------------------------
+    # Métricas usadas na RDT-02.
     METRICAS["RDT02"] = {
         "dim_cliente_linhas": int(len(dim)),
         "origem_AMBOS": int((dim["origem_unificacao"] == "AMBOS").sum()),
@@ -377,7 +367,7 @@ def unifica_clientes(qa):
         "remapeados_ecom": int(met_eco["remapeados"]),
     }
 
-    # ---- asserções (2.7) ---------------------------------------------------
+    # Verifica o contrato da dimensão unificada.
     validos = dim[dim["cpf_valido"] == True]                            # noqa: E712
     qa.unico("dim_cliente: cpf valido duplicado", validos["cpf_normalizado"],
              "dois clientes validos nao podem compartilhar o mesmo CPF")
@@ -413,9 +403,7 @@ def unifica_clientes(qa):
     return dim
 
 
-# ===========================================================================
-# DECISÃO 2 — CONFORMAÇÃO DE STATUS
-# ===========================================================================
+# Decisão 2: conformação de status
 MAPA_STATUS = [
     ("ENTREGUE",     "LEGADO", "ENTREGUE",         None),
     ("CANCELADO",    "LEGADO", "CANCELADO",        None),
@@ -452,7 +440,7 @@ def conforma_status(qa):
         "cancelado_legado_agrega_dois_motivos": int(leg.get("CANCELADO", 0)),
     }
 
-    # asserção: todo status de origem foi mapeado
+    # Nenhum status de origem pode ficar sem mapeamento.
     origens = set(leg) | set(eco)
     mapeados = set(dim["status_origem"])
     qa.igual("status de origem nao mapeado", len(origens - mapeados), 0,
@@ -463,9 +451,7 @@ def conforma_status(qa):
     return dim
 
 
-# ===========================================================================
-# DECISÃO 3 — SEMÂNTICA DOS VALORES MONETÁRIOS
-# ===========================================================================
+# Decisão 3: semântica dos valores monetários
 MAPA_CANAL = [
     ("LOJA",       "LEGADO", "FISICO"),
     ("SITE",       "LEGADO", "ONLINE_PROPRIO"),
@@ -514,7 +500,7 @@ def conforma_valores(qa):
     g_leg, i_leg2 = agrega_itens(i_leg, "ID_PEDIDO", "QTD", "VL_UNITARIO", "VL_DESCONTO")
     g_eco, i_eco2 = agrega_itens(i_eco, "order_id", "quantity", "unit_price", "discount")
 
-    # ---- proxies brutos para reconciliar -----------------------------------
+    # Preserva proxies brutos para a reconciliação.
     leg = p_leg.merge(g_leg, left_on="ID_PEDIDO", right_index=True, how="left")
     leg[["mercadoria", "desconto", "qtd_itens"]] = leg[["mercadoria", "desconto", "qtd_itens"]].fillna(0)
     frete_leg = leg["VALOR_FRETE"].fillna(0)
@@ -544,7 +530,7 @@ def conforma_valores(qa):
         "desconto_sentinela_-1_legado": int((i_leg["VL_DESCONTO"] < 0).sum()),
     }
 
-    # ---- conjuntos conformados de pedidos ----------------------------------
+    # Conforma os pedidos das duas origens.
     ped_leg = pd.DataFrame({
         "id_origem": "LEG-" + leg["ID_PEDIDO"].astype(str),
         "sistema_origem": "LEGADO",
@@ -579,7 +565,7 @@ def conforma_valores(qa):
                               - pedidos["valor_desconto"]).round(2)
     METRICAS["RDT05"]["soma_valor_total_conformado"] = round(float(pedidos["valor_total"].sum()), 2)
 
-    # asserção: soma conformada por pedido == soma dos itens (por sistema)
+    # A soma conformada por pedido deve coincidir com seus itens.
     dif_leg = int(((ped_leg["valor_mercadoria"] - leg["mercadoria"].round(2)).abs() > 0.01).sum())
     dif_eco = int(((ped_eco["valor_mercadoria"] - eco["mercadoria"].round(2)).abs() > 0.01).sum())
     qa.igual("valor_mercadoria legado == soma itens", dif_leg, 0,
@@ -587,7 +573,7 @@ def conforma_valores(qa):
     qa.igual("valor_mercadoria ecom == soma itens", dif_eco, 0,
              "medida do fato deve reproduzir a soma dos itens")
 
-    # ---- itens conformados --------------------------------------------------
+    # Conforma os itens sem descartar órfãos nesta etapa.
     item_leg = pd.DataFrame({
         "id_origem": "LEG-" + i_leg["ID_PEDIDO"].astype(str),
         "sistema_origem": "LEGADO",
@@ -620,10 +606,7 @@ def conforma_valores(qa):
     return pedidos, itens
 
 
-# ===========================================================================
-# DECISÃO 4 — TAXONOMIA DE PRODUTO
-# ===========================================================================
-# valor bruto do legado -> (categoria_nivel1, categoria_nivel2)
+# Decisão 4: valor bruto do legado -> (categoria_nivel1, categoria_nivel2)
 MAPA_CATEGORIA = {
     "ELETRO": ("Eletrodomésticos", None),
     "Eletro": ("Eletrodomésticos", None),
@@ -664,7 +647,7 @@ def conforma_categorias(qa):
     nome_cat = dict(zip(cat["category_id"], cat["name"]))
     pai_cat = dict(zip(cat["category_id"], cat["parent_id"]))
 
-    # --- legado --------------------------------------------------------------
+    # Legado: texto livre normalizado por mapeamento explícito.
     n1, n2 = [], []
     for valor in prod_leg["CATEGORIA"].fillna(""):
         a, b = MAPA_CATEGORIA.get(valor, (None, None))
@@ -682,7 +665,7 @@ def conforma_categorias(qa):
         "origem": "LEGADO",
     })
 
-    # --- e-commerce (taxonomia de dois níveis controlada) -------------------
+    # E-commerce: taxonomia controlada de dois níveis.
     def niveis(cid):
         if pd.isna(cid) or cid not in nome_cat:
             return None, None
@@ -727,9 +710,7 @@ def conforma_categorias(qa):
     return dim
 
 
-# ===========================================================================
-# DECISÃO 5 — DATAS, AUSÊNCIAS E SENTINELAS
-# ===========================================================================
+# Decisão 5: datas, ausências e sentinelas
 SENTINELA_DATA = pd.Timestamp("1900-01-01")
 
 
@@ -762,11 +743,11 @@ def trata_datas_e_ausencias(qa, pedidos):
         "entrega_valida": int(valida.sum()),
         "entrega_sem_data_flag": int(pedidos["entrega_sem_data"].sum()),
     }
-    # asserção: nenhuma data de entrega anterior ao pedido sobrou
+    # Datas de entrega anteriores ao pedido devem ser anuladas.
     qa.igual("dias_entrega negativo", int((pedidos["dias_entrega"] < 0).sum()), 0,
              "entrega anterior ao pedido deve ter sido anulada")
 
-    # ---- SAC: ausências e sentinelas ---------------------------------------
+    # SAC: converte ausências e sentinelas sem imputar valores.
     sac = ler("sac_atendimentos", dw)
     fech = pd.to_datetime(sac["data_fechamento"], errors="coerce", dayfirst=True)
     horas = pd.to_numeric(sac["tempo_resolucao_horas"].str.replace(",", ".", regex=False),
@@ -779,7 +760,7 @@ def trata_datas_e_ausencias(qa, pedidos):
         "horas_negativas": int((horas < 0).sum()),
     }
 
-    # ---- avaliações: presença de chaves opcionais --------------------------
+    # Avaliações: preserva a presença das chaves opcionais.
     aval = ler("marketplace_avaliacoes", dw)
     com_fuso = aval["submitted_at"].str.contains(r"(?:Z|[+-]\d{2}:\d{2})$", regex=True)
     METRICAS["RDT09"] = {
@@ -792,9 +773,7 @@ def trata_datas_e_ausencias(qa, pedidos):
     return pedidos
 
 
-# ===========================================================================
-# DECISÃO 6 — CHAVES DAS FONTES DE ARQUIVO
-# ===========================================================================
+# Decisão 6: chaves das fontes de arquivo
 def liga_sac_e_avaliacoes(qa, pedidos):
     """
     RDT-13 (parte da etapa 2). Liga SAC e avaliações aos pedidos por chave
@@ -803,7 +782,7 @@ def liga_sac_e_avaliacoes(qa, pedidos):
     dw = eng_dw()
     chaves_pedido = set(pedidos["id_origem"])
 
-    # ---- SAC ----------------------------------------------------------------
+    # SAC
     sac = ler("sac_atendimentos", dw)
     prefixo = {"LEGADO": "LEG-", "ECOM": "ECOM-"}
     id_pedido = sac["origem_sistema"].map(prefixo) + sac["id_pedido_origem"].astype(str)
@@ -824,15 +803,13 @@ def liga_sac_e_avaliacoes(qa, pedidos):
         "nota_satisfacao": nota,
         "horas_resolucao": horas.round(2),
     })
-    # O CSV do SAC repete protocolos idênticos (mesmo atendimento exportado
-    # duas vezes). O grão do fato é um atendimento, então o protocolo é a
-    # chave de deduplicação; as linhas removidas são contadas no RDT-13.
+    # O protocolo define o grão; repetições do mesmo atendimento são removidas.
     sac_antes = len(atend)
     atend = atend.drop_duplicates(subset=["protocolo"], keep="first").reset_index(drop=True)
     sac_duplicatas = sac_antes - len(atend)
     atend["pedido_ligado"] = atend["id_origem_pedido"].isin(chaves_pedido)
 
-    # ---- avaliações ---------------------------------------------------------
+    # Avaliações
     aval = ler("marketplace_avaliacoes", dw)
     nota_aval = pd.to_numeric(aval["rating"], errors="coerce").where(lambda s: s.between(1, 5))
     av = pd.DataFrame({
@@ -866,9 +843,7 @@ def liga_sac_e_avaliacoes(qa, pedidos):
     return atend, av
 
 
-# ===========================================================================
 # Orquestração
-# ===========================================================================
 if __name__ == "__main__":
     dw = eng_dw()
     qa = Suite(etapa="02_transformacao")
@@ -881,7 +856,7 @@ if __name__ == "__main__":
     pedidos = trata_datas_e_ausencias(qa, pedidos)
     atend, aval = liga_sac_e_avaliacoes(qa, pedidos)
 
-    # --- grava os conformados (chaves naturais) -----------------------------
+    # Grava os conjuntos conformados ainda com chaves naturais.
     grava_conformado(pedidos, "pedido_conformado", dw)
     grava_conformado(itens, "item_pedido_conformado", dw)
     grava_conformado(atend, "atendimento_conformado", dw)
@@ -894,7 +869,7 @@ if __name__ == "__main__":
         "avaliacao_conformada": int(len(aval)),
     }
 
-    # --- asserções de contagem ----------------------------------------------
+    # Confere as contagens antes da carga dimensional.
     qa.igual("pedido_conformado total", int(len(pedidos)), 130000 + 280000,
              "todo pedido das duas origens deve existir no conformado")
     qa.igual("item_pedido_conformado total", int(len(itens)), 397086 + 995367,

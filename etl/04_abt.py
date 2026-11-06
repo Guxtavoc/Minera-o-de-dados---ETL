@@ -29,10 +29,7 @@ from config import DATA_CORTE, DATA_FIM_ALVO, eng_dw
 from qualidade.assercoes import Suite
 
 
-# ---------------------------------------------------------------------------
-# ALVO — este está pronto, e é o único ponto do pipeline em que é legítimo
-# olhar para o futuro, porque é exatamente isso que se quer prever.
-# ---------------------------------------------------------------------------
+# O alvo é o único cálculo que consulta a janela posterior ao corte.
 SQL_ALVO = f"""
 WITH base AS (
     SELECT DISTINCT c.cliente_sk
@@ -56,11 +53,7 @@ LEFT JOIN compras_na_janela j ON j.cliente_sk = b.cliente_sk
 """
 
 
-# ---------------------------------------------------------------------------
-# ATRIBUTOS — a única diferença entre a versão correta e a com vazamento é
-# a base usada para frequência e recência. Na correta, ped_corte; na outra,
-# ped_all. O resto dos agregados continua explicitamente limitado ao corte.
-# ---------------------------------------------------------------------------
+# Só frequência e recência usam ped_all no contraexemplo com vazamento.
 _SQL_ATRIBUTOS = f"""
 WITH alvo AS (
 {SQL_ALVO}
@@ -81,6 +74,9 @@ ped_all AS (
 agg AS (
     SELECT cliente_sk,
            count(*) FILTER (WHERE status_conformado <> 'CANCELADO') AS frequencia,
+           count(*) FILTER (
+               WHERE status_conformado <> 'CANCELADO'
+                 AND data_pedido_sk <= DATE '{DATA_CORTE}') AS frequencia_corte,
            max(data_pedido_sk) FILTER (WHERE status_conformado <> 'CANCELADO') AS ultima,
            min(data_pedido_sk) AS primeira,
            coalesce(sum(valor_total) FILTER (
@@ -133,8 +129,8 @@ SELECT a.cliente_sk,
        (DATE '{DATA_CORTE}' - g.ultima) AS recencia_dias,
        coalesce(g.frequencia, 0)::int AS frequencia_pedidos,
        coalesce(g.valor, 0)::numeric(14,2) AS valor_monetario,
-       CASE WHEN coalesce(g.frequencia, 0) > 0
-            THEN round(g.valor / g.frequencia, 2) ELSE 0 END AS ticket_medio,
+       CASE WHEN coalesce(g.frequencia_corte, 0) > 0
+            THEN round(g.valor / g.frequencia_corte, 2) ELSE 0 END AS ticket_medio,
        round(g.prazo::numeric, 2) AS prazo_medio_entrega,
        CASE WHEN coalesce(g.total, 0) > 0
             THEN round(g.cancelados::numeric / g.total, 4) ELSE 0 END
@@ -177,8 +173,9 @@ def monta_atributos_com_vazamento(dw):
     Duas fugas deliberadas:
       1. frequencia_pedidos e recencia_dias usam pedidos de TODA a série,
          inclusive os da janela do alvo e posteriores a ela;
-      2. valor_monetario_z é normalizado com média/desvio de todas as linhas,
-         incluindo o futuro.
+      2. valor_monetario_z é normalizado com média/desvio de todas as linhas
+         antes da partição treino/teste. O valor monetário respeita o corte,
+         mas os parâmetros da normalização enxergam o conjunto de teste.
     """
     atributos = pd.read_sql(text(_sql_atributos(True)), dw)
     media = atributos["valor_monetario"].mean()
@@ -295,9 +292,43 @@ if __name__ == "__main__":
     antes = len(alvo)
     abt = alvo.merge(atributos, on="cliente_sk", how="left")
     qa.cardinalidade_preservada("junção alvo x atributos", antes, len(abt))
+    qa.sem_nulos("ABT: data_corte", abt["data_corte"])
+    qa.dominio("ABT: alvo binário", abt["alvo_recompra_90d"], {0, 1})
+    qa.igual(
+        "ABT: data_corte contratual",
+        int((abt["data_corte"].astype(str) != str(DATA_CORTE)).sum()),
+        0,
+        "todas as linhas devem representar a fotografia de 2025-06-30",
+    )
+    qa.igual(
+        "ABT: frequência negativa",
+        int((abt["frequencia_pedidos"] < 0).sum()),
+        0,
+        "contagens de pedidos não podem ser negativas",
+    )
 
     if args.correta:
         verifica_sem_vazamento(qa, abt, dw)
+        qa.igual(
+            "ABT correta: recência negativa",
+            int((abt["recencia_dias"].dropna() < 0).sum()),
+            0,
+            "recência negativa denuncia pedido posterior à data de corte",
+        )
+    else:
+        qa.maior_igual(
+            "ABT vazamento: recência negativa deliberada",
+            int((abt["recencia_dias"].dropna() < 0).sum()),
+            1,
+            "o contraexemplo deve realmente carregar informação futura",
+        )
+        qa.entre(
+            "ABT vazamento: z-score centrado",
+            float(abs(abt["valor_monetario_z"].mean())),
+            0.0,
+            0.000001,
+            "normalização global deve produzir média aproximadamente zero",
+        )
 
     grava(abt, dw, "correta" if args.correta else "vazamento")
     qa.registrar(dw)

@@ -20,11 +20,3 @@ tmp/
 # Anotações locais
 context.md
 link do repositorio.txt
-
-# Documentação gerada localmente
-docs/RDT_integral_semana4.md
-docs/RDT_integral_semana4.pdf
-docs/RDT_semana4.md
-docs/Relatorio_resultados_semana4.md
-docs/Relatorio_resultados_semana4.pdf
-scripts/gerar_pdfs_semana4.py

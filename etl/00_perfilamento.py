@@ -86,15 +86,13 @@ def salva(nome, blocos):
     print(f"\n>> gravado em {caminho}")
 
 
-# ===========================================================================
-# 1. MySQL legado
-# ===========================================================================
+# MySQL legado
 secao("FONTE 1 — MySQL · loja_legado")
 eng = eng_mysql()
 blocos = []
 with eng.connect() as cx:
     for tabela in ["CLIENTES", "PRODUTOS", "PEDIDOS", "ITENS_PEDIDO"]:
-        # amostra grande o suficiente para o perfil, pequena o bastante para a RAM
+        # A amostra limita memória sem perder a visão geral do perfil.
         df = pd.read_sql(text(f"SELECT * FROM {tabela} LIMIT 200000"), cx)
         blocos.append((tabela, perfila_dataframe(df, f"legado.{tabela}")))
 
@@ -119,9 +117,7 @@ with eng.connect() as cx:
         FROM CLIENTES GROUP BY formato"""), cx).to_string(index=False))
 salva("legado", blocos)
 
-# ===========================================================================
-# 2. PostgreSQL e-commerce
-# ===========================================================================
+# PostgreSQL de e-commerce
 secao("FONTE 2 — PostgreSQL · shop")
 engo = eng_origem()
 blocos = []
@@ -143,9 +139,7 @@ with engo.connect() as cx:
         cx).to_string(index=False))
 salva("ecommerce", blocos)
 
-# ===========================================================================
-# 3. CSV do SAC
-# ===========================================================================
+# CSV do SAC
 secao("FONTE 3 — CSV · atendimentos_sac.csv")
 print("Dica: tente ler com encoding='utf-8' e observe o erro. Depois leia certo.")
 sac = pd.read_csv(ARQ_SAC, sep=";", encoding="latin-1", dtype=str)
@@ -159,9 +153,7 @@ print("· campos com quebra de linha interna:",
 print("· motivos distintos (texto livre):", sac["motivo"].nunique())
 salva("sac", [("atendimentos_sac.csv", perfil_sac)])
 
-# ===========================================================================
-# 4. NDJSON de avaliações
-# ===========================================================================
+# NDJSON de avaliações
 secao("FONTE 4 — NDJSON · avaliacoes_marketplace.json")
 chaves = Counter()
 tipos_rating = Counter()

@@ -50,16 +50,14 @@ def espera(fn, nome, tentativas=60):
 def executa_script(cur, caminho, separador=";"):
     with open(caminho, encoding="utf-8") as f:
         sql = f.read()
-    # remove comentários de linha inteira antes de dividir
+    # Evita que ponto e vírgula em comentários quebre a divisão do DDL.
     linhas = [l for l in sql.splitlines() if not l.strip().startswith("--")]
     for cmd in "\n".join(linhas).split(separador):
         if cmd.strip():
             cur.execute(cmd)
 
 
-# ---------------------------------------------------------------------------
-# MySQL — sistema legado
-# ---------------------------------------------------------------------------
+# MySQL legado
 def carrega_mysql():
     espera(lambda: pymysql.connect(**MYSQL).close(), "MySQL")
     conn = pymysql.connect(**MYSQL)
@@ -99,9 +97,7 @@ def carrega_mysql():
     conn.close()
 
 
-# ---------------------------------------------------------------------------
-# PostgreSQL — plataforma de e-commerce
-# ---------------------------------------------------------------------------
+# PostgreSQL de e-commerce
 def carrega_pg_origem():
     espera(lambda: psycopg2.connect(PG_ORIGEM).close(), "PostgreSQL (origem)")
     conn = psycopg2.connect(PG_ORIGEM)
@@ -110,7 +106,7 @@ def carrega_pg_origem():
     log("criando esquema shop...")
     with open(os.path.join(SQL, "postgres-origem", "01_schema_ecommerce.sql"),
               encoding="utf-8") as f:
-        cur.execute(f.read())    # o script é idempotente
+        cur.execute(f.read())  # DDL idempotente.
 
     ordem = [
         ("shop.category", "ecom_category.csv"),
@@ -130,9 +126,7 @@ def carrega_pg_origem():
     conn.close()
 
 
-# ---------------------------------------------------------------------------
-# PostgreSQL — destino analítico
-# ---------------------------------------------------------------------------
+# PostgreSQL analítico
 def prepara_dw():
     espera(lambda: psycopg2.connect(PG_DW).close(), "PostgreSQL (DW)")
     conn = psycopg2.connect(PG_DW)

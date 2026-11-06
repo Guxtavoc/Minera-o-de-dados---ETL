@@ -1,7 +1,5 @@
--- ---------------------------------------------------------------------------
 -- Plataforma atual "Mercatto Commerce"
 -- PostgreSQL 16 · UTF-8 · nomenclatura em inglês, taxonomia controlada
--- ---------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS shop;
 SET search_path TO shop, public;
 
@@ -42,8 +40,7 @@ CREATE TABLE orders (
   customer_id    BIGINT NULL REFERENCES customer (customer_id),
   placed_at      TIMESTAMPTZ NULL,
   delivered_at   TIMESTAMPTZ NULL,
-  status         TEXT NULL,            -- delivered / canceled / payment_declined
-                                       -- shipped / processing
+  status         TEXT NULL,            -- delivered, canceled, payment_declined, shipped ou processing
   total_amount   NUMERIC(12,2) NULL,
   freight_amount NUMERIC(12,2) NULL,
   channel        TEXT NULL             -- web / app / marketplace

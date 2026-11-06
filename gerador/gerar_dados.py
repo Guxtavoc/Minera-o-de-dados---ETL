@@ -49,9 +49,7 @@ DT_INI = date(2023, 1, 1)
 DT_FIM = date(2025, 12, 31)
 DIAS = (DT_FIM - DT_INI).days
 
-# --------------------------------------------------------------------------
 # Vocabulário
-# --------------------------------------------------------------------------
 PRENOMES = """Ana Antônio Bruno Carla Carlos Cláudia Daniel Débora Eduardo Elaine
 Fábio Fernanda Gabriel Gisele Gustavo Helena Igor Isabela João Joana José Júlia
 Larissa Leonardo Letícia Lucas Luciana Marcelo Márcia Marcos Maria Mariana Mateus
@@ -132,9 +130,7 @@ MOTIVOS_SAC = [
 
 CANAIS_SAC = ["TELEFONE", "CHAT", "EMAIL", "WHATSAPP", "telefone", "chat"]
 
-# --------------------------------------------------------------------------
 # Utilitários
-# --------------------------------------------------------------------------
 def cpf_digitos(base9):
     """Calcula os dois dígitos verificadores de um CPF a partir de 9 dígitos."""
     s = sum((10 - i) * base9[i] for i in range(9))
@@ -151,7 +147,7 @@ def gera_cpf(valido=True):
     base = [int(x) for x in rng.integers(0, 10, 9)]
     d1, d2 = cpf_digitos(base)
     if not valido:
-        # quebra o primeiro dígito verificador de forma determinística
+        # Altera o primeiro dígito verificador de forma determinística.
         d1 = (d1 + 1) % 10
     return "".join(map(str, base)) + f"{d1}{d2}"
 
@@ -191,28 +187,24 @@ def log(msg):
     print(f"[gerador] {msg}", flush=True)
 
 
-# ==========================================================================
-# 1. Identidades compartilhadas (a ponte entre os dois sistemas)
-# ==========================================================================
+# Identidades compartilhadas entre os sistemas
 log("gerando identidades...")
 
-# Pessoas "reais". As primeiras N_SOBREPOSTOS aparecem nos dois sistemas.
+# As primeiras N_SOBREPOSTOS pessoas aparecem nos dois sistemas.
 N_PESSOAS = N_CLI_LEG + N_CLI_ECO - N_SOBREPOSTOS
 pessoas_nome = [nome_aleatorio() for _ in range(N_PESSOAS)]
 pessoas_cidade_idx = rng.integers(0, len(CIDADES), N_PESSOAS)
 
-# ~9% das pessoas recebem CPF inválido (erro de digitação na origem)
+# Cerca de 9% recebem um CPF inválido para simular erro de digitação.
 cpf_invalido_flag = rng.random(N_PESSOAS) < 0.09
 pessoas_cpf = [gera_cpf(valido=not bool(inv)) for inv in cpf_invalido_flag]
 
-# Índices: legado usa [0 : N_CLI_LEG]; ecommerce usa os sobrepostos + novos
+# O legado usa o primeiro intervalo; o e-commerce combina sobrepostos e novos.
 idx_legado = list(range(N_CLI_LEG))
 idx_ecom = list(range(N_SOBREPOSTOS)) + list(range(N_CLI_LEG, N_PESSOAS))
 assert len(idx_ecom) == N_CLI_ECO
 
-# ==========================================================================
-# 2. MySQL — loja_legado (latin-1, caixa alta, CPF mascarado)
-# ==========================================================================
+# MySQL legado: latin-1, caixa alta e CPF mascarado
 log(f"legado: {N_CLI_LEG} clientes...")
 
 leg_clientes = []
@@ -236,7 +228,7 @@ for i, p in enumerate(idx_legado):
     ])
     leg_cpf_por_id[i + 1] = pessoas_cpf[p]
 
-# D5: duplicatas exatas (2%) e near-duplicates (3%)
+# D5: duplicatas exatas (2%) e aproximadas (3%).
 n_dup_exata = int(N_CLI_LEG * 0.02)
 n_dup_prox = int(N_CLI_LEG * 0.03)
 prox_id = N_CLI_LEG + 1
@@ -329,7 +321,7 @@ for i in range(N_PED_LEG):
         st, f"{total:.2f}", f"{frete:.2f}", ped_canal[i],
     ])
 
-# D1: itens órfãos (~1,5%)
+# D1: cerca de 1,5% de itens órfãos.
 n_orf = int(len(leg_itens) * 0.015)
 for _ in range(n_orf):
     leg_itens.append([id_item, N_PED_LEG + int(rng.integers(1, 9999)),
@@ -343,9 +335,7 @@ escreve_csv(os.path.join(CARGA, "legado_itens.csv"),
             ["ID_ITEM", "ID_PEDIDO", "ID_PRODUTO", "QTD", "VL_UNITARIO", "VL_DESCONTO"],
             leg_itens, encoding="latin-1")
 
-# ==========================================================================
-# 3. PostgreSQL — ecommerce (UTF-8, taxonomia controlada, CPF limpo)
-# ==========================================================================
+# PostgreSQL de e-commerce: UTF-8, taxonomia controlada e CPF limpo
 log(f"ecommerce: {N_CLI_ECO} clientes...")
 
 escreve_csv(os.path.join(CARGA, "ecom_category.csv"),
@@ -447,9 +437,7 @@ escreve_csv(os.path.join(CARGA, "ecom_order_item.csv"),
             ["order_item_id", "order_id", "product_id", "quantity",
              "unit_price", "discount"], eco_itens)
 
-# ==========================================================================
-# 4. CSV do SAC (latin-1, ';', vírgula decimal, dd/mm/aaaa)
-# ==========================================================================
+# CSV do SAC: latin-1, ';', vírgula decimal e data dd/mm/aaaa
 log(f"SAC: {N_SAC} atendimentos...")
 
 sac = []
@@ -501,9 +489,7 @@ escreve_csv(
     sac, encoding="latin-1", sep=";", fim_linha="\r\n",
 )
 
-# ==========================================================================
-# 5. JSON de avaliações do marketplace (NDJSON, UTF-8, esquema irregular)
-# ==========================================================================
+# NDJSON de avaliações: UTF-8 e esquema irregular
 log(f"avaliações: {N_AVAL} registros...")
 
 TITULOS = ["Muito bom", "Recomendo", "Deixou a desejar", "Excelente custo-benefício",
@@ -530,7 +516,7 @@ with open(os.path.join(SAIDA, "avaliacoes_marketplace.json"), "w", encoding="utf
                               datetime.min.time()) + timedelta(
                                   hours=int(rng.integers(0, 24)),
                                   minutes=int(rng.integers(0, 60)))
-        # D: timestamp ora com fuso, ora sem
+        # Alterna timestamps com e sem fuso para reproduzir a irregularidade.
         ts = dt.strftime("%Y-%m-%dT%H:%M:%S-03:00") if rng.random() < 0.8 \
             else dt.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -559,9 +545,7 @@ with open(os.path.join(SAIDA, "avaliacoes_marketplace.json"), "w", encoding="utf
 
         f.write(json.dumps(reg, ensure_ascii=False) + "\n")
 
-# ==========================================================================
 # Resumo
-# ==========================================================================
 resumo = {
     "semente": SEED,
     "escala": ESCALA,

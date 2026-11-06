@@ -1,0 +1,10 @@
+versao,modelo,linhas_treino,linhas_teste,auc,acuracia_balanceada,acuracia
+correta,Naive Bayes,74963,32128,0.563883,0.528892,0.739075
+correta,Logistic Regression,74963,32128,0.581897,0.501729,0.775959
+correta,Tree,74963,32128,0.517701,0.514576,0.676886
+vazamento_completo,Naive Bayes,74963,32128,0.888384,0.735159,0.812531
+vazamento_completo,Logistic Regression,74963,32128,0.869445,0.652851,0.798774
+vazamento_completo,Tree,74963,32128,0.955638,0.942806,0.963179
+vazamento_sem_normalizacao,Naive Bayes,74963,32128,0.892852,0.750641,0.818787
+vazamento_sem_normalizacao,Logistic Regression,74963,32128,0.869492,0.652791,0.79868
+vazamento_sem_normalizacao,Tree,74963,32128,0.954849,0.942554,0.962712

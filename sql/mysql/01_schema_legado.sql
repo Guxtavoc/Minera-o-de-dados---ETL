@@ -1,7 +1,5 @@
--- ---------------------------------------------------------------------------
 -- Sistema legado "Mercatto ERP" (empresa adquirida em 2024)
 -- MySQL 8 · charset latin1 · nomenclatura em português, caixa alta
--- ---------------------------------------------------------------------------
 CREATE DATABASE IF NOT EXISTS loja_legado
   CHARACTER SET latin1 COLLATE latin1_swedish_ci;
 

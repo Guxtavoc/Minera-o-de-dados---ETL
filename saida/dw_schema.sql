@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict odQFEJfiUs4YJxXhyJXlnY9LEaHh3nKQ39eKSlZcLMUUg8gMb3pu5E2Cjn6EtWn
+\restrict vWPprvt6khVuV43bhBOwTNalnfSXLMjTJxm8pSzIOSDcbdpvj9KM4CubTwkruoa
 
 -- Dumped from database version 16.15 (Debian 16.15-1.pgdg13+2)
 -- Dumped by pg_dump version 17.11 (Debian 17.11-0+deb13u1)
@@ -1105,5 +1105,5 @@ ALTER TABLE ONLY dw.fato_pedido
 -- PostgreSQL database dump complete
 --
 
-\unrestrict odQFEJfiUs4YJxXhyJXlnY9LEaHh3nKQ39eKSlZcLMUUg8gMb3pu5E2Cjn6EtWn
+\unrestrict vWPprvt6khVuV43bhBOwTNalnfSXLMjTJxm8pSzIOSDcbdpvj9KM4CubTwkruoa
 

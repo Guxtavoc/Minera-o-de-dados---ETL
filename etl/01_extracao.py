@@ -32,7 +32,7 @@ from config import (ARQ_AVALIACOES, ARQ_SAC, eng_dw, eng_mysql, eng_origem)
 from qualidade.assercoes import Suite
 
 AGORA = datetime.now(timezone.utc)
-LOTE = 50_000          # leia em blocos: a base não cabe confortavelmente na RAM
+LOTE = 50_000  # Limita o uso de memória durante a leitura.
 
 
 def grava_stg(df, tabela, engine, primeiro_bloco):
@@ -63,9 +63,7 @@ def conta_origem(engine_origem, sql):
         return int(cx.execute(text(sql)).scalar())
 
 
-# ---------------------------------------------------------------------------
-# Fonte 1 — MySQL legado (charset latin1 definido em config.py)
-# ---------------------------------------------------------------------------
+# MySQL legado; o charset latin1 é definido em config.py.
 def extrai_mysql(qa):
     eng, dw = eng_mysql(), eng_dw()
     mapa = [
@@ -81,12 +79,10 @@ def extrai_mysql(qa):
                  "extração que perde linha silenciosamente é o defeito mais caro")
 
 
-# ---------------------------------------------------------------------------
-# Fonte 2 — PostgreSQL e-commerce (TIMESTAMPTZ)
-# ---------------------------------------------------------------------------
+# PostgreSQL de e-commerce
 def extrai_postgres(qa):
     eng, dw = eng_origem(), eng_dw()
-    # category entra aqui porque a taxonomia controlada é insumo da DECISÃO 4.
+    # A taxonomia controlada alimenta a conformação de produtos.
     mapa = [
         ("category", "ecom_category"),
         ("customer", "ecom_customer"),
@@ -99,17 +95,13 @@ def extrai_postgres(qa):
         esperado = conta_origem(eng, f"SELECT COUNT(*) FROM shop.{origem}")
         qa.igual(f"linhas {destino}", n, esperado,
                  "contagem do stg deve bater com a origem")
-    # Fuso: no stg os TIMESTAMPTZ são preservados com fuso; a padronização
-    # (DECISÃO 5) acontece na etapa 2.
+    # O staging preserva o fuso; a etapa 2 faz a padronização.
 
 
-# ---------------------------------------------------------------------------
-# Fonte 3 — CSV do SAC (latin-1, ';', decimal com vírgula, dd/mm/aaaa)
-# ---------------------------------------------------------------------------
+# CSV do SAC: latin-1, separador ';', decimal com vírgula e data dd/mm/aaaa.
 def extrai_sac(qa):
     dw = eng_dw()
-    # dtype=str: conversão de tipo é transformação e ocorre na etapa 2.
-    # keep_default_na=False: string vazia fica vazia; NULL é o que não existe.
+    # Preserva tipos e vazios da origem; a conversão ocorre na etapa 2.
     df = pd.read_csv(ARQ_SAC, sep=";", encoding="latin-1", dtype=str,
                      keep_default_na=False)
     df["_linha_origem"] = range(len(df))
@@ -118,9 +110,7 @@ def extrai_sac(qa):
     return len(df)
 
 
-# ---------------------------------------------------------------------------
-# Fonte 4 — NDJSON de avaliações do marketplace
-# ---------------------------------------------------------------------------
+# NDJSON de avaliações do marketplace
 def extrai_avaliacoes(qa):
     dw = eng_dw()
     registros = []
@@ -135,13 +125,13 @@ def extrai_avaliacoes(qa):
                 "channel": ped.get("channel"),
                 "product_sku": prod.get("sku"),
                 "submitted_at": o.get("submitted_at"),
-                # rating vem ora número, ora texto: no stg guardamos como texto.
+                # O staging uniformiza rating como texto sem alterar seu valor.
                 "rating": str(o["rating"]) if "rating" in o else "",
                 "title": o.get("title", ""),
                 "comment": o.get("comment", ""),
                 "verified_purchase": o.get("verified_purchase"),
                 "helpful_votes": o.get("helpful_votes"),
-                # presença das chaves opcionais: chave omitida != valor nulo
+                # Chave omitida e valor nulo têm significados distintos.
                 "_rating_presente": "rating" in o,
                 "_title_presente": "title" in o,
                 "_comment_presente": "comment" in o,

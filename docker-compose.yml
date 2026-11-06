@@ -2,7 +2,7 @@ name: lab-etl-varejo
 
 services:
 
-  # ---------------------------------------------------------------- origem 1
+  # Origem legada em MySQL/latin1.
   mysql_legado:
     image: mysql:8.0
     container_name: lab_mysql_legado
@@ -24,7 +24,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # ---------------------------------------------------------------- origem 2
+  # Origem atual em PostgreSQL/UTF-8.
   pg_ecommerce:
     image: postgres:16
     container_name: lab_pg_ecommerce
@@ -42,7 +42,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # ------------------------------------------------------------------ destino
+  # Repositório analítico.
   pg_dw:
     image: postgres:16
     container_name: lab_pg_dw
@@ -60,7 +60,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # -------------------------------------------------------- inspeção via web
+  # Inspeção dos bancos via web.
   adminer:
     image: adminer:4
     container_name: lab_adminer
@@ -71,7 +71,7 @@ services:
       - pg_ecommerce
       - pg_dw
 
-  # ------------------------------ geração e carga inicial (executa uma vez)
+  # Geração e carga inicial, executada uma vez.
   seed:
     build: ./gerador
     container_name: lab_seed
@@ -91,7 +91,7 @@ services:
       pg_dw:        { condition: service_healthy }
     restart: "no"
 
-  # ------------------------------------------- ambiente de trabalho do aluno
+  # Ambiente de execução do pipeline.
   etl:
     build: ./etl
     container_name: lab_etl
